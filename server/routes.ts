@@ -6,11 +6,19 @@ import {
   insertQuestionSchema,
   insertAnswerSchema,
   insertKnowledgeAreaSchema,
+  EvaluationResult,
+  TestResult,
+  Question,
+  Answer
 } from "@shared/schema";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Google AI with the provided API key
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY environment variable is not set!");
+    throw new Error("GEMINI_API_KEY is required to use AI features");
+  }
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -331,6 +339,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error generating notes:', error);
       res.status(500).json({ message: 'Failed to generate study notes', error });
+    }
+  });
+  
+  // Evaluate entire test endpoint
+  app.post('/api/sessions/:sessionId/evaluate', async (req: Request, res: Response) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      if (isNaN(sessionId)) {
+        return res.status(400).json({ message: 'Invalid session ID' });
+      }
+      
+      // Get the session details
+      const session = await storage.getSessionWithKnowledgeAreas(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+      
+      // Get all questions and answers for this session
+      const questionsWithAnswers = await storage.getSessionQuestionsWithAnswers(sessionId);
+      if (questionsWithAnswers.length === 0) {
+        return res.status(400).json({ message: 'No questions and answers found for this session' });
+      }
+      
+      // Filter out questions without answers
+      const completedQuestionsWithAnswers = questionsWithAnswers.filter(qa => qa.answer);
+      if (completedQuestionsWithAnswers.length === 0) {
+        return res.status(400).json({ message: 'No answered questions found for this session' });
+      }
+      
+      // Prepare the prompt for AI evaluation
+      let promptText = `I've completed a test on ${session.topic}. Please evaluate my overall performance based on the following questions and answers:\n\n`;
+      
+      completedQuestionsWithAnswers.forEach((qa, index) => {
+        promptText += `Question ${index + 1} (${qa.difficulty}): ${qa.question}\n`;
+        promptText += `My Answer: ${qa.answer?.userAnswer}\n`;
+        if (qa.answer?.evaluation) {
+          const evaluation = qa.answer.evaluation as EvaluationResult;
+          promptText += `Individual Score: ${evaluation.correctness}/100\n\n`;
+        } else {
+          promptText += `\n`;
+        }
+      });
+      
+      promptText += `Based on my answers above, please provide:
+      1. An overall score out of 100
+      2. General feedback on my performance
+      3. A list of my strengths
+      4. A list of areas that need improvement
+      5. Recommended knowledge areas to focus on for further study
+      
+      Format your response as a JSON object with the following structure:
+      {
+        "totalScore": <number between 0-100>,
+        "feedback": "<general feedback>",
+        "strengths": ["<strength1>", "<strength2>", ...],
+        "weaknesses": ["<weakness1>", "<weakness2>", ...],
+        "recommendedAreas": ["<area1>", "<area2>", ...]
+      }`;
+      
+      try {
+        const result = await model.generateContent(promptText);
+        const response = await result.response;
+        const text = response.text();
+        
+        // Parse the evaluation
+        let testResult;
+        try {
+          // Extract JSON from response
+          const jsonMatch = text.match(/{[\s\S]*}/);
+          if (jsonMatch) {
+            testResult = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error('No JSON found in AI response');
+          }
+          
+          // Create full test result with questions and answers
+          const fullTestResult: TestResult = {
+            questionsAndAnswers: completedQuestionsWithAnswers.map(qa => ({
+              question: {
+                id: qa.id,
+                sessionId: qa.sessionId,
+                question: qa.question,
+                difficulty: qa.difficulty,
+                createdAt: qa.createdAt
+              },
+              answer: qa.answer!
+            })),
+            totalScore: testResult.totalScore,
+            feedback: testResult.feedback,
+            strengths: testResult.strengths,
+            weaknesses: testResult.weaknesses,
+            recommendedAreas: testResult.recommendedAreas
+          };
+          
+          res.json(fullTestResult);
+        } catch (error) {
+          console.error('Failed to parse test evaluation from AI response:', error);
+          return res.status(500).json({ message: 'Failed to parse test evaluation' });
+        }
+      } catch (error) {
+        console.error('Error generating content from AI:', error);
+        return res.status(500).json({ message: 'Error generating content from AI', error });
+      }
+    } catch (error) {
+      console.error('Error evaluating test:', error);
+      res.status(500).json({ message: 'Failed to evaluate test', error });
     }
   });
 

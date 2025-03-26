@@ -100,6 +100,18 @@ export interface QuestionWithAnswer extends Question {
   answer?: Answer;
 }
 
+export interface TestResult {
+  questionsAndAnswers: {
+    question: Question;
+    answer: Answer;
+  }[];
+  totalScore: number;
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
+  recommendedAreas: string[];
+}
+
 export interface EvaluationResult {
   correctness: number; // 0-100 score
   feedback: string;

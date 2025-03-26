@@ -1,4 +1,4 @@
-import { AIResponse } from "@shared/schema";
+import { AIResponse, TestResult } from "@shared/schema";
 import { apiRequest } from "./queryClient";
 
 export interface GenerateQuestionsResponse {
@@ -24,6 +24,8 @@ export interface EvaluateAnswerResponse {
   createdAt: string;
 }
 
+export type TestEvaluationResponse = TestResult;
+
 export async function generateQuestions(topic: string, sessionId: number): Promise<GenerateQuestionsResponse> {
   const response = await apiRequest('POST', '/api/questions/generate', { topic, sessionId });
   return response.json();
@@ -41,5 +43,10 @@ export async function getTeachingContent(topic: string, question: string): Promi
 
 export async function generateStudyNotes(topic: string, weakAreas?: string[]): Promise<{ notes: string }> {
   const response = await apiRequest('POST', '/api/notes/generate', { topic, weakAreas });
+  return response.json();
+}
+
+export async function evaluateTest(sessionId: number): Promise<TestEvaluationResponse> {
+  const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate`);
   return response.json();
 }
