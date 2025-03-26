@@ -10,8 +10,8 @@ import {
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Initialize Google AI
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyA5B0fevX11HSaPK7Z-81OmfmGF-_MX57M");
+  // Initialize Google AI with the provided API key
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   // Health check endpoint
