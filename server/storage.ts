@@ -149,13 +149,31 @@ export class MemStorage implements IStorage {
   // Answer operations
   async createAnswer(answer: InsertAnswer): Promise<Answer> {
     const id = this.answerId++;
-    const newAnswer = { 
-      ...answer, 
-      id,
-      createdAt: new Date() 
-    };
-    this.answers.set(id, newAnswer);
-    return newAnswer;
+    
+    // For existing questions, we'll update the answer rather than creating a new one
+    const existingAnswer = await this.getQuestionAnswer(answer.questionId);
+    
+    if (existingAnswer) {
+      // Update existing answer
+      const updatedAnswer = { 
+        ...existingAnswer,
+        userAnswer: answer.userAnswer,
+        evaluation: answer.evaluation,
+        // Only include batchEvaluation if it exists in the input
+        ...(answer.batchEvaluation ? { batchEvaluation: answer.batchEvaluation } : {})
+      };
+      this.answers.set(existingAnswer.id, updatedAnswer);
+      return updatedAnswer;
+    } else {
+      // Create new answer
+      const newAnswer = { 
+        ...answer, 
+        id,
+        createdAt: new Date() 
+      };
+      this.answers.set(id, newAnswer);
+      return newAnswer;
+    }
   }
   
   async getQuestionAnswer(questionId: number): Promise<Answer | undefined> {

@@ -51,6 +51,7 @@ export const answers = pgTable("answers", {
   questionId: integer("question_id").notNull(),
   userAnswer: text("user_answer").notNull(),
   evaluation: json("evaluation").notNull(), // Contains correctness, feedback, etc.
+  batchEvaluation: json("batch_evaluation"), // Optional batch evaluation data
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -58,6 +59,7 @@ export const insertAnswerSchema = createInsertSchema(answers).pick({
   questionId: true,
   userAnswer: true,
   evaluation: true,
+  batchEvaluation: true,
 });
 
 // KnowledgeArea schema

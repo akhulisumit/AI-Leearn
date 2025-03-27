@@ -19,6 +19,7 @@ import { useSession } from "@/contexts/SessionContext";
 import { apiRequest } from "@/lib/queryClient";
 import { evaluateTest } from "@/lib/gemini";
 import { useToast } from "@/hooks/use-toast";
+import { BatchEvaluationResult } from "@/../../shared/schema";
 
 const Feedback: React.FC = () => {
   const [, params] = useRoute("/feedback");
@@ -76,15 +77,10 @@ const Feedback: React.FC = () => {
       const answerEntries = Array.from(answers.entries());
       for (let i = 0; i < answerEntries.length; i++) {
         const [, answer] = answerEntries[i];
-        if (answer.batchEvaluation) {
+        // Need to check if batchEvaluation exists in the answer object
+        if (answer && typeof answer === 'object' && 'batchEvaluation' in answer && answer.batchEvaluation) {
           hasBatchEvaluation = true;
-          const batchEval = answer.batchEvaluation as {
-            totalScore: number;
-            feedback: string;
-            strengths: string[];
-            weaknesses: string[];
-            recommendedAreas?: string[];
-          };
+          const batchEval = answer.batchEvaluation as BatchEvaluationResult;
           
           // Use the batch evaluation instead of calculating
           setOverallScore(batchEval.totalScore);
