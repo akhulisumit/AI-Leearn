@@ -33,6 +33,15 @@ export async function generateQuestions(topic: string, sessionId: number): Promi
 
 export async function submitAnswer(questionId: number, userAnswer: string): Promise<EvaluateAnswerResponse> {
   const response = await apiRequest('POST', '/api/answers', { questionId, userAnswer });
+  
+  // If we get a 202 Accepted status, the server is processing the evaluation 
+  // asynchronously and has sent back a temporary response
+  if (response.status === 202) {
+    // Return the temporary response with proper typing
+    const tempResult = await response.json();
+    return tempResult;
+  }
+  
   return response.json();
 }
 

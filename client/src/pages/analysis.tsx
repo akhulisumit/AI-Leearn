@@ -95,6 +95,30 @@ const Analysis: React.FC = () => {
     });
   };
   
+  // Pre-fetch the next question for faster transitions
+  const [nextQuestion, setNextQuestion] = useState<Question | null>(null);
+  
+  // Find and prepare the next question in advance
+  useEffect(() => {
+    if (questions.length > 0 && currentQuestion) {
+      const currentIndex = questions.findIndex(q => q.id === currentQuestion.id);
+      const unansweredQuestions = questions.filter(q => !answers.has(q.id) && q.id !== currentQuestion.id);
+      
+      if (unansweredQuestions.length > 0) {
+        // Prioritize the next sequential question if it's unanswered
+        const nextSequentialQuestion = currentIndex < questions.length - 1 ? questions[currentIndex + 1] : null;
+        if (nextSequentialQuestion && !answers.has(nextSequentialQuestion.id)) {
+          setNextQuestion(nextSequentialQuestion);
+        } else {
+          // Otherwise use any unanswered question
+          setNextQuestion(unansweredQuestions[0]);
+        }
+      } else {
+        setNextQuestion(null);
+      }
+    }
+  }, [questions, currentQuestion, answers]);
+
   const handleSubmitAnswer = async () => {
     if (!currentQuestion) return;
     
@@ -109,15 +133,31 @@ const Analysis: React.FC = () => {
     }
     
     setIsEvaluating(true);
+    
     try {
-      await submitAnswer(currentQuestion.id, answer);
+      // Start the evaluation process
+      const evaluationPromise = submitAnswer(currentQuestion.id, answer);
       
-      // Find the next unanswered question
-      await loadSession(sessionId);
+      // If we have a pre-fetched next question, immediately show it
+      // This makes the UI feel more responsive while the evaluation happens in the background
+      if (nextQuestion) {
+        setCurrentQuestion(nextQuestion);
+        setNextQuestion(null);
+      }
       
-      // If all questions are answered, move to feedback stage
-      const updatedAnswers = await (await fetch(`/api/sessions/${sessionId}/questions-with-answers`)).json();
+      // Wait for evaluation to complete in the background
+      await evaluationPromise;
+      
+      // Refresh session data after evaluation (in background)
+      const sessionPromise = loadSession(sessionId);
+      
+      // Check if all questions are answered (also in background)
+      const answersResponse = await fetch(`/api/sessions/${sessionId}/questions-with-answers`);
+      const updatedAnswers = await answersResponse.json();
       const allAnswered = updatedAnswers.questionsWithAnswers.every((q: any) => q.answer);
+      
+      // Make sure session data is loaded
+      await sessionPromise;
       
       if (allAnswered) {
         // Create knowledge areas based on question topics if not already existing
@@ -148,26 +188,27 @@ const Analysis: React.FC = () => {
           }
           
           // Create knowledge areas
-          for (const topic of topics) {
-            try {
-              await apiRequest("POST", "/api/knowledge-areas", {
-                sessionId,
-                name: topic,
-                proficiency: Math.floor(Math.random() * 100) // Mock for demo, would be calculated based on answer correctness
-              });
-            } catch (error) {
-              console.error(`Failed to create knowledge area for ${topic}:`, error);
-            }
-          }
+          const createAreaPromises = Array.from(topics).map(topic => 
+            apiRequest("POST", "/api/knowledge-areas", {
+              sessionId,
+              name: topic,
+              proficiency: Math.floor(Math.random() * 100) // Mock for demo, would be calculated based on answer correctness
+            }).catch(error => console.error(`Failed to create knowledge area for ${topic}:`, error))
+          );
+          
+          // Wait for all knowledge areas to be created
+          await Promise.allSettled(createAreaPromises);
         }
         
         // Update session stage and redirect to feedback
         await updateSessionStage("feedback");
         navigate(`/feedback?sessionId=${sessionId}`);
-      } else {
-        // Find next unanswered question
+      } else if (!nextQuestion) {
+        // Only if we didn't already set the next question, find one now
         const nextUnansweredQuestion = updatedAnswers.questionsWithAnswers.find((q: any) => !q.answer);
-        setCurrentQuestion(nextUnansweredQuestion || null);
+        if (nextUnansweredQuestion) {
+          setCurrentQuestion(nextUnansweredQuestion);
+        }
       }
     } catch (error) {
       console.error("Failed to submit answer:", error);

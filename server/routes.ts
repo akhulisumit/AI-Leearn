@@ -160,9 +160,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Question ID and user answer are required' });
       }
       
-      const question = await storage.getQuestion(questionId);
+      // Get the question details - this can be done in parallel with further processing
+      const questionPromise = storage.getQuestion(questionId);
+      
+      // Create a temporary record with minimal data to respond quickly to the client
+      // This allows the client to move on to the next question while evaluation happens
+      // Convert the object to something we can send over JSON
+      // The actual Answer type requires createdAt to be a Date object
+      // but for the response we can use a modified version
+      const tempAnswer = {
+        id: -1, // Will be replaced by actual ID
+        questionId,
+        userAnswer,
+        evaluation: {
+          correctness: 0,
+          feedback: "Evaluating your answer...",
+          strengths: [],
+          weaknesses: []
+        },
+        createdAt: new Date().toISOString()
+      };
+      
+      // Send a quick initial response so the client can proceed
+      // This is a performance optimization - the client doesn't need to wait for AI evaluation
+      res.status(202).json(tempAnswer);
+      
+      // Now continue with the actual evaluation asynchronously
+      const question = await questionPromise;
       if (!question) {
-        return res.status(404).json({ message: 'Question not found' });
+        console.error(`Question with ID ${questionId} not found`);
+        return; // The client already received a response, so just log the error
       }
       
       // Evaluate the answer using AI
@@ -191,25 +218,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (error) {
           console.error('Failed to parse evaluation from AI response:', error);
-          return res.status(500).json({ message: 'Failed to parse evaluation' });
+          // Continue with default evaluation since we already sent a response
+          evaluation = {
+            correctness: 50,
+            feedback: "We had trouble evaluating your answer automatically.",
+            strengths: ["Submission received"],
+            weaknesses: ["Evaluation process encountered an error"]
+          };
         }
         
-        // Save the answer and evaluation
+        // Save the answer and complete evaluation to the database
         const answerData = insertAnswerSchema.parse({
           questionId,
           userAnswer,
           evaluation
         });
         
-        const savedAnswer = await storage.createAnswer(answerData);
-        res.status(201).json(savedAnswer);
+        await storage.createAnswer(answerData);
+        // We don't need to send a response here since we already sent one
       } catch (error) {
         console.error('Error generating content from AI:', error);
-        return res.status(500).json({ message: 'Error generating content from AI', error });
+        // We already sent a response to client, so just log the error
       }
     } catch (error) {
-      console.error('Error evaluating answer:', error);
-      res.status(500).json({ message: 'Failed to evaluate answer', error });
+      console.error('Error in answer submission process:', error);
+      // If we haven't sent a response yet, send an error
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Failed to process answer submission', error });
+      }
     }
   });
 
