@@ -17,6 +17,8 @@ import WorkflowProgress from "@/components/WorkflowProgress";
 import SidePanel from "@/components/SidePanel";
 import { useSession } from "@/contexts/SessionContext";
 import { apiRequest } from "@/lib/queryClient";
+import { evaluateTest } from "@/lib/gemini";
+import { useToast } from "@/hooks/use-toast";
 
 const Feedback: React.FC = () => {
   const [, params] = useRoute("/feedback");
@@ -32,15 +34,19 @@ const Feedback: React.FC = () => {
     sessionTime,
     updateSessionStage
   } = useSession();
+  const { toast } = useToast();
   
   const [answeredQuestions, setAnsweredQuestions] = useState<any[]>([]);
   const [overallScore, setOverallScore] = useState<number>(0);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const [strengthsAndWeaknesses, setStrengthsAndWeaknesses] = useState<{
     strengths: string[];
     weaknesses: string[];
+    recommendedAreas?: string[];
   }>({
     strengths: [],
-    weaknesses: []
+    weaknesses: [],
+    recommendedAreas: []
   });
   
   // Load session data
@@ -69,15 +75,22 @@ const Feedback: React.FC = () => {
       
       answered.forEach(q => {
         const answer = answers.get(q.id);
-        if (answer && answer.evaluation) {
-          totalCorrectness += answer.evaluation.correctness;
+        if (answer && typeof answer.evaluation === 'object' && answer.evaluation) {
+          const evaluation = answer.evaluation as { 
+            correctness: number; 
+            feedback: string;
+            strengths?: string[];
+            weaknesses?: string[];
+          };
+          
+          totalCorrectness += evaluation.correctness;
           
           // Collect strengths and weaknesses
-          if (answer.evaluation.strengths) {
-            allStrengths.push(...answer.evaluation.strengths);
+          if (evaluation.strengths && Array.isArray(evaluation.strengths)) {
+            allStrengths.push(...evaluation.strengths);
           }
-          if (answer.evaluation.weaknesses) {
-            allWeaknesses.push(...answer.evaluation.weaknesses);
+          if (evaluation.weaknesses && Array.isArray(evaluation.weaknesses)) {
+            allWeaknesses.push(...evaluation.weaknesses);
           }
         }
       });
@@ -86,8 +99,8 @@ const Feedback: React.FC = () => {
       setOverallScore(Math.round(avgScore));
       
       // Deduplicate strengths and weaknesses
-      const uniqueStrengths = [...new Set(allStrengths)];
-      const uniqueWeaknesses = [...new Set(allWeaknesses)];
+      const uniqueStrengths = Array.from(new Set(allStrengths));
+      const uniqueWeaknesses = Array.from(new Set(allWeaknesses));
       
       setStrengthsAndWeaknesses({
         strengths: uniqueStrengths.slice(0, 5), // Limit to top 5
@@ -111,6 +124,47 @@ const Feedback: React.FC = () => {
   
   const handleGenerateQuestions = () => {
     navigate(`/analysis?sessionId=${sessionId}`);
+  };
+  
+  const handleGetAIEvaluation = async () => {
+    if (!sessionId || isEvaluating) return;
+    
+    setIsEvaluating(true);
+    toast({
+      title: "Evaluating your test...",
+      description: "Please wait while our AI analyzes your answers.",
+      duration: 3000,
+    });
+    
+    try {
+      const result = await evaluateTest(sessionId);
+      
+      if (result) {
+        // Update the score and feedback with the AI evaluation
+        setOverallScore(result.totalScore);
+        setStrengthsAndWeaknesses({
+          strengths: result.strengths || [],
+          weaknesses: result.weaknesses || [],
+          recommendedAreas: result.recommendedAreas || []
+        });
+        
+        toast({
+          title: "Evaluation complete!",
+          description: "Your test has been analyzed by our AI.",
+          duration: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to get AI evaluation:", error);
+      toast({
+        title: "Evaluation failed",
+        description: "We couldn't complete the AI evaluation. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setIsEvaluating(false);
+    }
   };
   
   const getScoreColor = (score: number) => {
@@ -199,6 +253,14 @@ const Feedback: React.FC = () => {
                         <span className={`text-2xl font-bold ${getScoreColor(overallScore)}`}>{overallScore}%</span>
                       </div>
                     </div>
+                    <Button
+                      onClick={handleGetAIEvaluation}
+                      disabled={isEvaluating}
+                      variant="outline"
+                      className="mt-4"
+                    >
+                      {isEvaluating ? "Evaluating..." : "Get AI-Powered Evaluation"}
+                    </Button>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -258,6 +320,33 @@ const Feedback: React.FC = () => {
                     </div>
                   </div>
                   
+                  {strengthsAndWeaknesses.recommendedAreas && strengthsAndWeaknesses.recommendedAreas.length > 0 && (
+                    <div className="border rounded-lg p-4">
+                      <h3 className="text-lg font-medium mb-3">Recommended Focus Areas</h3>
+                      <ul className="space-y-2">
+                        {strengthsAndWeaknesses.recommendedAreas.map((area, index) => (
+                          <li key={index} className="flex items-start">
+                            <svg 
+                              className="w-5 h-5 text-blue-500 mr-2 flex-shrink-0 mt-0.5" 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              viewBox="0 0 24 24" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                            >
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <line x1="12" y1="8" x2="12" y2="16"></line>
+                              <line x1="8" y1="12" x2="16" y2="12"></line>
+                            </svg>
+                            <span>{area}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
                   {knowledgeAreas.length > 0 && (
                     <div className="border rounded-lg p-4">
                       <h3 className="text-lg font-medium mb-3">Knowledge Areas</h3>
@@ -311,6 +400,16 @@ const Feedback: React.FC = () => {
                         const answer = answers.get(qa.id);
                         if (!answer) return null;
                         
+                        // Type assertion for evaluation
+                        const evaluation = typeof answer.evaluation === 'object' && answer.evaluation ? 
+                          (answer.evaluation as { 
+                            correctness: number; 
+                            feedback: string;
+                            strengths?: string[];
+                            weaknesses?: string[];
+                          }) : 
+                          { correctness: 0, feedback: "No evaluation available" };
+                        
                         return (
                           <div key={qa.id} className="border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-2">
@@ -328,16 +427,16 @@ const Feedback: React.FC = () => {
                             <div className="mb-3">
                               <div className="flex justify-between mb-1">
                                 <h4 className="text-sm font-medium">Correctness:</h4>
-                                <span className={`text-sm ${getScoreColor(answer.evaluation.correctness)}`}>
-                                  {answer.evaluation.correctness}%
+                                <span className={`text-sm ${getScoreColor(evaluation.correctness)}`}>
+                                  {evaluation.correctness}%
                                 </span>
                               </div>
-                              <Progress value={answer.evaluation.correctness} className="h-2" />
+                              <Progress value={evaluation.correctness} className="h-2" />
                             </div>
                             
                             <div>
                               <h4 className="text-sm font-medium mb-1">Feedback:</h4>
-                              <p className="text-neutral-700 text-sm">{answer.evaluation.feedback}</p>
+                              <p className="text-neutral-700 text-sm">{evaluation.feedback}</p>
                             </div>
                           </div>
                         );

@@ -56,16 +56,65 @@ export async function submitAllAnswers(sessionId: number): Promise<boolean> {
 }
 
 export async function getTeachingContent(topic: string, question: string): Promise<AIResponse> {
-  const response = await apiRequest('POST', '/api/teaching', { topic, question });
-  return response.json();
+  try {
+    const response = await apiRequest('POST', '/api/teaching', { topic, question });
+    const data = await response.json();
+    
+    // Add error handling and validation
+    if (!data || !data.text) {
+      throw new Error('Invalid response format from teaching API');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error in getTeachingContent:", error);
+    // Return a fallback response that won't break the UI
+    return {
+      text: "I'm having trouble connecting to the teaching service right now. Please try again in a moment.",
+      followUpQuestions: ["Would you like to try a different topic?"]
+    };
+  }
 }
 
 export async function generateStudyNotes(topic: string, weakAreas?: string[]): Promise<{ notes: string }> {
-  const response = await apiRequest('POST', '/api/notes/generate', { topic, weakAreas });
-  return response.json();
+  try {
+    const response = await apiRequest('POST', '/api/notes/generate', { topic, weakAreas });
+    const data = await response.json();
+    
+    if (!data || !data.notes) {
+      throw new Error('Invalid response format from notes generation API');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error in generateStudyNotes:", error);
+    // Return a fallback response
+    return {
+      notes: `Here are some study notes on ${topic}:\n\nI'm sorry, but I'm having trouble generating detailed study notes right now. Please try again in a moment.`
+    };
+  }
 }
 
 export async function evaluateTest(sessionId: number): Promise<TestEvaluationResponse> {
-  const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate`);
-  return response.json();
+  try {
+    const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error in evaluateTest:", error);
+    // Return a minimal valid TestResult structure that won't break the UI
+    return {
+      questionsAndAnswers: [],
+      totalScore: 0,
+      feedback: "We're having trouble evaluating your test results right now. Please try again later.",
+      strengths: ["Your answers have been saved"],
+      weaknesses: ["We couldn't complete the evaluation"],
+      recommendedAreas: ["Try again later"]
+    };
+  }
 }

@@ -74,21 +74,10 @@ const Teaching: React.FC = () => {
       if (action === 'notes') {
         handleGenerateNotes();
       } else {
-        // Get weak areas for focused teaching
-        let weakAreaName = currentSession.topic;
+        // Simpler approach - just use the main topic
+        const initialQuery = `Hey buddy, I am stuck on ${currentSession.topic}, can you teach me in an engaging way?`;
         
-        if (knowledgeAreas.length > 0) {
-          const weakAreas = knowledgeAreas
-            .filter(area => area.proficiency < 70)
-            .map(area => area.name);
-            
-          if (weakAreas.length > 0) {
-            weakAreaName = weakAreas[0];
-          }
-        }
-        
-        // Initialize with user query
-        const initialQuery = `Hey buddy, I am stuck on ${weakAreaName}, can you teach me in an engaging way?`;
+        // Set the initial message immediately
         setMessages([
           {
             role: 'user',
@@ -96,11 +85,13 @@ const Teaching: React.FC = () => {
           }
         ]);
         
-        // Fetch initial teaching content
-        fetchTeachingContent(initialQuery);
+        // Use setTimeout to make sure UI updates before the API call
+        setTimeout(() => {
+          fetchTeachingContent(initialQuery);
+        }, 100);
       }
     }
-  }, [currentSession, knowledgeAreas, messages.length, isLoading, action]);
+  }, [currentSession, messages.length, isLoading, action]);
   
   const fetchTeachingContent = async (query: string) => {
     if (!currentSession) return;
@@ -189,21 +180,38 @@ const Teaching: React.FC = () => {
     if (!currentSession) return;
     
     setGeneratingNotes(true);
+    toast({
+      title: "Generating study notes...",
+      description: "Please wait while we prepare your personalized notes.",
+      duration: 3000,
+    });
+    
     try {
-      // Get weak areas for focused notes
-      const weakAreas = knowledgeAreas
-        .filter(area => area.proficiency < 70)
-        .map(area => area.name);
+      // Simplify - just use the main topic without trying to filter knowledge areas
+      // This makes it more reliable when knowledge areas aren't available
+      const response = await generateStudyNotes(currentSession.topic);
       
-      const response = await generateStudyNotes(currentSession.topic, weakAreas);
-      setStudyNotes(response.notes);
+      if (response && response.notes) {
+        setStudyNotes(response.notes);
+        toast({
+          title: "Notes ready!",
+          description: "Your study notes have been generated successfully.",
+          duration: 2000,
+        });
+      } else {
+        throw new Error("Failed to generate notes - empty response");
+      }
     } catch (error) {
       console.error("Failed to generate study notes:", error);
       toast({
         title: "Error",
         description: "Failed to generate study notes. Please try again.",
         variant: "destructive",
+        duration: 5000,
       });
+      
+      // Set a fallback note so the UI doesn't break
+      setStudyNotes(`# Study Notes for ${currentSession.topic}\n\nI'm sorry, but I'm having trouble generating detailed study notes right now. Please try again in a moment.`);
     } finally {
       setGeneratingNotes(false);
     }
