@@ -10,6 +10,7 @@ interface SidePanelProps {
   onGenerateNotes: () => void;
   onGenerateQuestions: () => void;
   onChangeTopic?: () => void;
+  activeAction?: "notes" | "questions" | null;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -19,7 +20,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onModeChange,
   onGenerateNotes,
   onGenerateQuestions,
-  onChangeTopic
+  onChangeTopic,
+  activeAction = null
 }) => {
   // Get proficiency color based on score
   const getProficiencyColor = (proficiency: number) => {
@@ -148,12 +150,18 @@ const SidePanel: React.FC<SidePanelProps> = ({
         <p className="text-sm text-neutral-600 mb-2">Actions:</p>
         <div className="space-y-2">
           <button 
-            className="w-full flex items-center justify-between p-2 text-left rounded-lg border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            className={`w-full flex items-center justify-between p-2 text-left rounded-lg border 
+              ${activeAction === "notes" || (mode === "teaching" && window.location.search.includes("action=notes"))
+                ? "border-primary bg-blue-50" 
+                : "border-neutral-200 hover:bg-neutral-50"} 
+              transition-colors`}
             onClick={onGenerateNotes}
           >
             <div className="flex items-center">
               <svg 
-                className="w-5 h-5 text-neutral-600 mr-2" 
+                className={`w-5 h-5 ${activeAction === "notes" || (mode === "teaching" && window.location.search.includes("action=notes")) 
+                  ? "text-primary" 
+                  : "text-neutral-600"} mr-2`}
                 xmlns="http://www.w3.org/2000/svg" 
                 viewBox="0 0 24 24" 
                 fill="none" 
@@ -165,10 +173,14 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
               </svg>
-              <span className="text-sm">Generate Notes</span>
+              <span className={`text-sm ${activeAction === "notes" || (mode === "teaching" && window.location.search.includes("action=notes")) 
+                ? "font-medium text-primary" 
+                : ""}`}>Generate Notes</span>
             </div>
             <svg 
-              className="w-5 h-5 text-neutral-400" 
+              className={`w-5 h-5 ${activeAction === "notes" || (mode === "teaching" && window.location.search.includes("action=notes")) 
+                ? "text-primary" 
+                : "text-neutral-400"}`}
               xmlns="http://www.w3.org/2000/svg" 
               viewBox="0 0 24 24" 
               fill="none" 

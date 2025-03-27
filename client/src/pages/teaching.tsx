@@ -369,6 +369,7 @@ const Teaching: React.FC = () => {
                 onModeChange={handleModeChange}
                 onGenerateNotes={handleGenerateNotes}
                 onGenerateQuestions={() => handleModeChange("analysis")}
+                activeAction={action === "notes" ? "notes" : null}
               />
             </div>
             
