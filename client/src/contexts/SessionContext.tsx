@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { Session, KnowledgeArea, Question, Answer } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -34,6 +34,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionTime, setSessionTime] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   
+  // Track whether session loading is already in progress to prevent multiple concurrent loads
+  const isLoadingSession = useRef(false);
+  
   // Clean up timer on unmount
   useEffect(() => {
     return () => {
@@ -56,6 +59,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
   
   const loadSession = async (sessionId: number): Promise<void> => {
+    // Prevent multiple concurrent loads of the same session
+    if (isLoadingSession.current) {
+      console.log("Session loading already in progress, skipping duplicate request");
+      return;
+    }
+    
+    // Set the loading flag
+    isLoadingSession.current = true;
+    
     try {
       // Use Promise.all to make the requests concurrently for faster loading
       const [sessionResponse, questionsResponse] = await Promise.all([
@@ -95,6 +107,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Error loading session:", error);
       throw error; // Propagate the error to allow proper handling in components
+    } finally {
+      // Reset the loading flag when done, whether successful or not
+      isLoadingSession.current = false;
     }
   };
   

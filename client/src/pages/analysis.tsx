@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useRoute } from "wouter";
 import { 
   Card, 
@@ -53,21 +53,10 @@ const Analysis: React.FC = () => {
     }
   }, [sessionId, loadSession, startTimer]);
   
-  // Generate questions if there are none
-  useEffect(() => {
-    if (currentSession && questions.length === 0 && !isGeneratingQuestions) {
-      generateInitialQuestions();
-    }
-  }, [currentSession, questions]);
+  // Define a ref to track if we've already generated questions
+  const initialQuestionsGenerated = React.useRef(false);
   
-  // Set the first unanswered question as current
-  useEffect(() => {
-    if (questions.length > 0 && !currentQuestion) {
-      const unansweredQuestion = questions.find(q => !answers.has(q.id));
-      setCurrentQuestion(unansweredQuestion || questions[0]);
-    }
-  }, [questions, answers, currentQuestion]);
-  
+  // Define the function to generate initial questions
   const generateInitialQuestions = async () => {
     if (!currentSession) return;
     
@@ -86,6 +75,22 @@ const Analysis: React.FC = () => {
       setIsGeneratingQuestions(false);
     }
   };
+  
+  // Generate questions if there are none - using a ref to ensure it only runs once
+  useEffect(() => {
+    if (currentSession && questions.length === 0 && !isGeneratingQuestions && !initialQuestionsGenerated.current) {
+      initialQuestionsGenerated.current = true;
+      generateInitialQuestions();
+    }
+  }, [currentSession, questions, isGeneratingQuestions]);
+  
+  // Set the first unanswered question as current
+  useEffect(() => {
+    if (questions.length > 0 && !currentQuestion) {
+      const unansweredQuestion = questions.find(q => !answers.has(q.id));
+      setCurrentQuestion(unansweredQuestion || questions[0]);
+    }
+  }, [questions, answers, currentQuestion]);
   
   const handleAnswerChange = (questionId: number, answer: string) => {
     setUserAnswers(prev => {
