@@ -55,7 +55,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           <button 
             className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 
               ${mode === "analysis" 
-                ? "border-primary bg-primary bg-opacity-10" 
+                ? "border-primary bg-blue-50" 
                 : "border-transparent bg-neutral-100 hover:border-primary-light"} 
               transition-colors`}
             onClick={() => onModeChange("analysis")}
@@ -81,7 +81,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           <button 
             className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 
               ${mode === "teaching" 
-                ? "border-primary bg-primary bg-opacity-10" 
+                ? "border-primary bg-blue-50" 
                 : "border-transparent bg-neutral-100 hover:border-primary-light"} 
               transition-colors`}
             onClick={() => onModeChange("teaching")}
@@ -200,7 +200,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           <button 
             className={`w-full flex items-center justify-between p-2 text-left rounded-lg border 
               ${mode === "teaching" 
-                ? "border-primary bg-primary bg-opacity-5" 
+                ? "border-primary bg-blue-50" 
                 : "border-neutral-200 hover:bg-neutral-50"} 
               transition-colors`}
             onClick={() => onModeChange("teaching")}
