@@ -20,7 +20,6 @@ import { useSession } from "@/contexts/SessionContext";
 import { getTeachingContent, generateStudyNotes } from "@/lib/gemini";
 import { useToast } from "@/hooks/use-toast";
 import { KnowledgeArea } from "@shared/schema";
-import { Markdown } from "react-markdown/lib/react-markdown";
 
 interface AIMessage {
   role: 'user' | 'ai';
@@ -46,7 +45,7 @@ const Teaching: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [currentQuery, setCurrentQuery] = useState("");
-  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<string>("");
   const [showQuiz, setShowQuiz] = useState(false);
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [studyNotes, setStudyNotes] = useState<string | null>(null);
@@ -71,16 +70,22 @@ const Teaching: React.FC = () => {
   
   // Initialize teaching mode or handle notes generation
   useEffect(() => {
-    if (currentSession && knowledgeAreas.length > 0 && messages.length === 0 && !isLoading) {
+    if (currentSession && messages.length === 0 && !isLoading) {
       if (action === 'notes') {
         handleGenerateNotes();
       } else {
         // Get weak areas for focused teaching
-        const weakAreas = knowledgeAreas
-          .filter(area => area.proficiency < 70)
-          .map(area => area.name);
+        let weakAreaName = currentSession.topic;
         
-        const weakAreaName = weakAreas.length > 0 ? weakAreas[0] : currentSession.topic;
+        if (knowledgeAreas.length > 0) {
+          const weakAreas = knowledgeAreas
+            .filter(area => area.proficiency < 70)
+            .map(area => area.name);
+            
+          if (weakAreas.length > 0) {
+            weakAreaName = weakAreas[0];
+          }
+        }
         
         // Initialize with user query
         const initialQuery = `Hey buddy, I am stuck on ${weakAreaName}, can you teach me in an engaging way?`;
@@ -101,12 +106,22 @@ const Teaching: React.FC = () => {
     if (!currentSession) return;
     
     setIsLoading(true);
+    toast({
+      title: "Generating teaching content...",
+      description: "Please wait while we prepare your learning materials.",
+      duration: 3000,
+    });
+    
     try {
       const topicQuery = query.includes(currentSession.topic) 
         ? query 
         : `${query} (regarding ${currentSession.topic})`;
       
       const response = await getTeachingContent(currentSession.topic, topicQuery);
+      
+      if (!response || !response.text) {
+        throw new Error("Received empty response from teaching API");
+      }
       
       setMessages(prev => [
         ...prev,
@@ -119,15 +134,34 @@ const Teaching: React.FC = () => {
       
       // Show quiz after the AI response 
       if (response.followUpQuestions && response.followUpQuestions.length > 0) {
-        setSelectedQuestion(null);
+        setSelectedQuestion("");
         setShowQuiz(true);
       }
+      
+      // Success toast notification
+      toast({
+        title: "Content ready!",
+        description: "Your learning content has been generated successfully.",
+        duration: 2000,
+      });
     } catch (error) {
       console.error("Failed to get teaching content:", error);
+      
+      // Add a fallback AI message if the API call fails
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'ai',
+          content: "I'm sorry, I had trouble generating content about this topic. Please try rephrasing your question or try a different topic.",
+          followUpQuestions: ["Could you try asking a more specific question?"]
+        }
+      ]);
+      
       toast({
         title: "Error",
-        description: "Failed to generate teaching content. Please try again.",
+        description: "Failed to generate teaching content. Please try again with a different query.",
         variant: "destructive",
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);

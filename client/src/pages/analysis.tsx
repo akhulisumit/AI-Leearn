@@ -177,55 +177,85 @@ const Analysis: React.FC = () => {
         // Wait for all submissions to complete
         await Promise.all(answerSubmissionPromises);
         
-        // Now evaluate all answers at once
-        await submitAllAnswers(sessionId);
-        
-        // Refresh session data
-        await loadSession(sessionId);
-        
-        // Create knowledge areas based on question topics if not already existing
-        if (knowledgeAreas.length === 0) {
-          const topics = new Set<string>();
-          questions.forEach(q => {
-            // Extract topic from question (this is a simple approach - in a real app we might use NLP)
-            const questionText = q.question.toLowerCase();
-            
-            // Try to extract topic from question based on keywords
-            const possibleTopics = [
-              "algebra", "calculus", "statistics", 
-              "quantum", "physics", "mechanics", 
-              "algorithms", "data structures", "machine learning"
-            ];
-            
-            for (const topic of possibleTopics) {
-              if (questionText.includes(topic)) {
-                topics.add(topic.charAt(0).toUpperCase() + topic.slice(1));
-                break;
-              }
-            }
+        try {
+          // Show loading message
+          toast({
+            title: "Evaluating answers...",
+            description: "Please wait while we process your answers",
+            duration: 3000,
           });
           
-          // If no specific topics found, use a generic one
-          if (topics.size === 0 && currentSession) {
-            topics.add(currentSession.topic);
+          // Now evaluate all answers at once
+          const result = await submitAllAnswers(sessionId);
+          
+          if (!result) {
+            throw new Error("Failed to evaluate answers");
           }
           
-          // Create knowledge areas
-          const createAreaPromises = Array.from(topics).map(topic => 
-            apiRequest("POST", "/api/knowledge-areas", {
-              sessionId,
-              name: topic,
-              proficiency: Math.floor(Math.random() * 100) // Mock for demo, would be calculated based on answer correctness
-            }).catch(error => console.error(`Failed to create knowledge area for ${topic}:`, error))
-          );
+          // Refresh session data
+          await loadSession(sessionId);
           
-          // Wait for all knowledge areas to be created
-          await Promise.allSettled(createAreaPromises);
+          // Create knowledge areas based on question topics if not already existing
+          if (knowledgeAreas.length === 0) {
+            const topics = new Set<string>();
+            questions.forEach(q => {
+              // Extract topic from question (this is a simple approach - in a real app we might use NLP)
+              const questionText = q.question.toLowerCase();
+              
+              // Try to extract topic from question based on keywords
+              const possibleTopics = [
+                "algebra", "calculus", "statistics", 
+                "quantum", "physics", "mechanics", "newton", "motion",
+                "algorithms", "data structures", "machine learning"
+              ];
+              
+              for (const topic of possibleTopics) {
+                if (questionText.includes(topic)) {
+                  topics.add(topic.charAt(0).toUpperCase() + topic.slice(1));
+                  break;
+                }
+              }
+            });
+            
+            // If no specific topics found, use a generic one
+            if (topics.size === 0 && currentSession) {
+              topics.add(currentSession.topic);
+            }
+            
+            // Create knowledge areas
+            const createAreaPromises = Array.from(topics).map(topic => 
+              apiRequest("POST", "/api/knowledge-areas", {
+                sessionId,
+                name: topic,
+                proficiency: Math.floor(Math.random() * 100) + 1 // Mock for demo, would be calculated based on answer correctness
+              }).catch(error => console.error(`Failed to create knowledge area for ${topic}:`, error))
+            );
+            
+            // Wait for all knowledge areas to be created
+            await Promise.allSettled(createAreaPromises);
+          }
+          
+          // Success notification
+          toast({
+            title: "Evaluation complete!",
+            description: "Redirecting to your feedback page...",
+            duration: 2000,
+          });
+          
+          // Update session stage and redirect to feedback
+          await updateSessionStage("feedback");
+          setTimeout(() => {
+            navigate(`/feedback?sessionId=${sessionId}`);
+          }, 1000);
+        } catch (error) {
+          console.error("Error evaluating answers:", error);
+          toast({
+            title: "Evaluation failed",
+            description: "Please try again or contact support",
+            variant: "destructive",
+            duration: 5000,
+          });
         }
-        
-        // Update session stage and redirect to feedback
-        await updateSessionStage("feedback");
-        navigate(`/feedback?sessionId=${sessionId}`);
       } else if (!nextQuestion) {
         // Only if we didn't already set the next question, find one now
         const nextUnansweredQuestion = questions.find(q => !userAnswers.has(q.id));
