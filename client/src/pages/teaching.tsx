@@ -96,13 +96,22 @@ const Teaching: React.FC = () => {
     }
   }, [sessionId, loadSession]);
   
+  // Use a ref to track if we've already initiated actions
+  const actionsInitiated = useRef(false);
+  
   // Initialize teaching mode or handle notes generation
   useEffect(() => {
-    if (currentSession && messages.length === 0 && !isLoading) {
+    if (currentSession && !actionsInitiated.current && !isLoading) {
+      // Mark as initiated to prevent further calls
+      actionsInitiated.current = true;
+      
       if (action === 'notes') {
-        handleGenerateNotes();
-      } else {
-        // Simpler approach - just use the main topic
+        // Handle notes generation
+        setTimeout(() => {
+          handleGenerateNotes();
+        }, 100);
+      } else if (messages.length === 0) {
+        // Handle teaching content
         const initialQuery = `Hey buddy, I am stuck on ${currentSession.topic}, can you teach me in an engaging way?`;
         
         // Set the initial message immediately
@@ -116,10 +125,17 @@ const Teaching: React.FC = () => {
         // Use setTimeout to make sure UI updates before the API call
         setTimeout(() => {
           fetchTeachingContent(initialQuery);
-        }, 100);
+        }, 200);
       }
     }
-  }, [currentSession, messages.length, isLoading, action]);
+    
+    // Reset the initiated flag when key dependencies change
+    return () => {
+      if (!currentSession) {
+        actionsInitiated.current = false;
+      }
+    };
+  }, [currentSession, isLoading, action]);
   
   const fetchTeachingContent = async (query: string) => {
     if (!currentSession) return;
@@ -205,9 +221,12 @@ const Teaching: React.FC = () => {
   };
   
   const handleGenerateNotes = async () => {
-    if (!currentSession) return;
+    if (!currentSession || studyNotes) return;
     
     setGeneratingNotes(true);
+    // Set this to true to prevent repeated calls during rerender cycles
+    const notesGenerationInProgress = true;
+    
     toast({
       title: "Generating study notes...",
       description: "Please wait while we prepare your personalized notes.",
@@ -269,6 +288,8 @@ const Teaching: React.FC = () => {
   const handleRestart = () => {
     setMessages([]);
     setStudyNotes(null);
+    // Reset the actionsInitiated flag to allow for new content
+    actionsInitiated.current = false;
   };
   
   if (!currentSession) {

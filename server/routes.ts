@@ -9,7 +9,9 @@ import {
   EvaluationResult,
   TestResult,
   Question,
-  Answer
+  Answer,
+  QuestionWithAnswer,
+  BatchEvaluationResult
 } from "@shared/schema";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -321,7 +323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Prepare the batch evaluation prompt for AI - focus on overall evaluation
             let promptText = `I've completed a test on ${session.topic}. Please evaluate my performance on ALL of the following questions and answers at once:\n\n`;
             
-            answeredQuestions.forEach((qa, index) => {
+            answeredQuestions.forEach((qa: QuestionWithAnswer, index: number) => {
               promptText += `Question ${index + 1} (${qa.difficulty}): ${qa.question}\n`;
               promptText += `My Answer: ${qa.answer?.userAnswer}\n\n`;
             });
@@ -371,8 +373,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 batchEvaluation,
                 answeredQuestions
               };
-            } catch (error) {
-              throw new Error(`Failed to parse batch evaluation: ${error.message}`);
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              throw new Error(`Failed to parse batch evaluation: ${errorMessage}`);
             }
           }
         );
@@ -381,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { batchEvaluation, answeredQuestions } = evaluationData;
         
         // Update individual answers with the evaluation results
-        const updatePromises = answeredQuestions.map(async (qa, index) => {
+        const updatePromises = answeredQuestions.map(async (qa: QuestionWithAnswer, index: number) => {
           if (!qa.answer) return Promise.resolve();
           
           const score = batchEvaluation.individualScores[index] || 0;
@@ -692,7 +695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Prepare the prompt for AI evaluation
             let promptText = `I've completed a test on ${session.topic}. Please evaluate my overall performance based on the following questions and answers:\n\n`;
             
-            completedQuestionsWithAnswers.forEach((qa, index) => {
+            completedQuestionsWithAnswers.forEach((qa: QuestionWithAnswer, index: number) => {
               promptText += `Question ${index + 1} (${qa.difficulty}): ${qa.question}\n`;
               promptText += `My Answer: ${qa.answer?.userAnswer}\n`;
               if (qa.answer?.evaluation) {
@@ -749,8 +752,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 weaknesses: testResult.weaknesses || [],
                 recommendedAreas: testResult.recommendedAreas || []
               };
-            } catch (error) {
-              throw new Error(`Failed to parse test evaluation: ${error.message}`);
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              throw new Error(`Failed to parse test evaluation: ${errorMessage}`);
             }
           }
         );
