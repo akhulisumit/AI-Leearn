@@ -15,11 +15,16 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import WorkflowProgress from "@/components/WorkflowProgress";
 import SidePanel from "@/components/SidePanel";
+import TopicSelectionModal from "@/components/TopicSelectionModal";
 import { useSession } from "@/contexts/SessionContext";
 import { generateQuestions, submitAnswer, submitAllAnswers } from "@/lib/gemini";
 import { Question, KnowledgeArea } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+// Import the types needed for education and difficulty levels
+type EducationLevel = "Class 1-5" | "Class 6-8" | "Class 9-10" | "Class 11-12" | "Bachelors" | "Masters" | "PhD";
+type DifficultyLevel = "Beginner" | "Standard" | "Advanced";
 
 const Analysis: React.FC = () => {
   const [, params] = useRoute("/analysis");
@@ -35,7 +40,8 @@ const Analysis: React.FC = () => {
     answers,
     sessionTime,
     startTimer,
-    updateSessionStage
+    updateSessionStage,
+    createSession
   } = useSession();
   
   const [isLoading, setIsLoading] = useState(false);
@@ -127,6 +133,9 @@ const Analysis: React.FC = () => {
   }, [questions, currentQuestion, answers]);
 
   const [testComplete, setTestComplete] = useState(false);
+  
+  // Topic selection modal state
+  const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   
   // Store answers temporarily in local state
   const [pendingAnswers, setPendingAnswers] = useState<Map<number, string>>(new Map());
@@ -316,6 +325,41 @@ const Analysis: React.FC = () => {
     generateInitialQuestions();
   };
   
+  const handleChangeTopic = () => {
+    // Open the topic selection modal
+    setIsTopicModalOpen(true);
+  };
+  
+  const handleSelectTopic = async (topic: string, educationLevel: EducationLevel, difficultyLevel: DifficultyLevel) => {
+    try {
+      // Reset state
+      setUserAnswers(new Map());
+      setPendingAnswers(new Map());
+      setCurrentQuestion(null);
+      setNextQuestion(null);
+      initialQuestionsGenerated.current = false;
+      
+      // For this demo, we'll use a fixed user ID of 1
+      const userId = 1;
+      
+      // Create the session with the topic, education level, and difficulty level
+      // Format: "TOPIC [Education: LEVEL, Difficulty: LEVEL]"
+      const formattedTopic = `${topic} [Education: ${educationLevel}, Difficulty: ${difficultyLevel}]`;
+      
+      const session = await createSession(userId, formattedTopic);
+      
+      // Redirect to the new session
+      window.location.href = `/analysis?sessionId=${session.id}`;
+    } catch (error) {
+      console.error("Failed to create session with new topic:", error);
+      toast({
+        title: "Error",
+        description: "Failed to change topic. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty.toLowerCase()) {
       case 'easy': return 'text-[#4CAF50]';
@@ -370,6 +414,7 @@ const Analysis: React.FC = () => {
                 onModeChange={handleModeChange}
                 onGenerateNotes={handleGenerateNotes}
                 onGenerateQuestions={handleGenerateQuestions}
+                onChangeTopic={handleChangeTopic}
               />
             </div>
             
@@ -474,6 +519,13 @@ const Analysis: React.FC = () => {
       </main>
       
       <Footer />
+      
+      {/* Topic Selection Modal */}
+      <TopicSelectionModal
+        open={isTopicModalOpen}
+        onOpenChange={setIsTopicModalOpen}
+        onSelectTopic={handleSelectTopic}
+      />
     </div>
   );
 };

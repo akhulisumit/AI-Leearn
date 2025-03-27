@@ -9,6 +9,7 @@ interface SidePanelProps {
   onModeChange: (mode: "analysis" | "feedback" | "teaching" | "retest") => void;
   onGenerateNotes: () => void;
   onGenerateQuestions: () => void;
+  onChangeTopic?: () => void;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -17,7 +18,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   knowledgeAreas,
   onModeChange,
   onGenerateNotes,
-  onGenerateQuestions
+  onGenerateQuestions,
+  onChangeTopic
 }) => {
   // Get proficiency color based on score
   const getProficiencyColor = (proficiency: number) => {
@@ -32,7 +34,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
       
       <div className="mb-6">
         <p className="text-sm text-neutral-600 mb-1">Selected Topic:</p>
-        <div className="flex items-center bg-neutral-100 rounded-lg p-2">
+        <button 
+          className="w-full flex items-center bg-neutral-100 rounded-lg p-2 hover:bg-neutral-200 transition-colors"
+          onClick={onChangeTopic}
+        >
           <svg 
             className="w-5 h-5 text-primary mr-2" 
             xmlns="http://www.w3.org/2000/svg" 
@@ -45,8 +50,22 @@ const SidePanel: React.FC<SidePanelProps> = ({
           >
             <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path>
           </svg>
-          <span className="font-medium">{topic}</span>
-        </div>
+          <span className="font-medium text-left flex-1">{topic}</span>
+          <svg 
+            className="w-4 h-4 text-neutral-400" 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          >
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </button>
       </div>
       
       <div className="mb-6">
