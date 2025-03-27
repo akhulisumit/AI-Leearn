@@ -73,14 +73,14 @@ const SidePanel: React.FC<SidePanelProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <button 
             className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 
-              ${mode === "analysis" 
+              ${mode === "analysis" && window.location.pathname === "/analysis"
                 ? "border-primary bg-blue-50" 
                 : "border-transparent bg-neutral-100 hover:border-primary-light"} 
               transition-colors`}
             onClick={() => onModeChange("analysis")}
           >
             <svg 
-              className={`w-5 h-5 ${mode === "analysis" ? "text-primary" : "text-neutral-700"}`} 
+              className={`w-5 h-5 ${mode === "analysis" && window.location.pathname === "/analysis" ? "text-primary" : "text-neutral-700"}`} 
               xmlns="http://www.w3.org/2000/svg" 
               viewBox="0 0 24 24" 
               fill="none" 
@@ -93,20 +93,20 @@ const SidePanel: React.FC<SidePanelProps> = ({
               <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
             </svg>
-            <span className={`text-xs mt-1 ${mode === "analysis" ? "text-primary font-medium" : "text-neutral-700"}`}>
+            <span className={`text-xs mt-1 ${mode === "analysis" && window.location.pathname === "/analysis" ? "text-primary font-medium" : "text-neutral-700"}`}>
               Analysis
             </span>
           </button>
           <button 
             className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 
-              ${mode === "teaching" 
+              ${mode === "teaching" && window.location.pathname === "/teaching"
                 ? "border-primary bg-blue-50" 
                 : "border-transparent bg-neutral-100 hover:border-primary-light"} 
               transition-colors`}
             onClick={() => onModeChange("teaching")}
           >
             <svg 
-              className={`w-5 h-5 ${mode === "teaching" ? "text-primary" : "text-neutral-700"}`} 
+              className={`w-5 h-5 ${mode === "teaching" && window.location.pathname === "/teaching" ? "text-primary" : "text-neutral-700"}`} 
               xmlns="http://www.w3.org/2000/svg" 
               viewBox="0 0 24 24" 
               fill="none" 
@@ -118,7 +118,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
               <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
               <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"></path>
             </svg>
-            <span className={`text-xs mt-1 ${mode === "teaching" ? "text-primary font-medium" : "text-neutral-700"}`}>
+            <span className={`text-xs mt-1 ${mode === "teaching" && window.location.pathname === "/teaching" ? "text-primary font-medium" : "text-neutral-700"}`}>
               Teaching
             </span>
           </button>
@@ -218,7 +218,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           </button>
           <button 
             className={`w-full flex items-center justify-between p-2 text-left rounded-lg border 
-              ${mode === "teaching" 
+              ${mode === "teaching" && window.location.pathname === "/teaching"
                 ? "border-primary bg-blue-50" 
                 : "border-neutral-200 hover:bg-neutral-50"} 
               transition-colors`}
@@ -226,7 +226,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           >
             <div className="flex items-center">
               <svg 
-                className={`w-5 h-5 ${mode === "teaching" ? "text-primary" : "text-neutral-600"} mr-2`} 
+                className={`w-5 h-5 ${mode === "teaching" && window.location.pathname === "/teaching" ? "text-primary" : "text-neutral-600"} mr-2`} 
                 xmlns="http://www.w3.org/2000/svg" 
                 viewBox="0 0 24 24" 
                 fill="none" 
@@ -239,12 +239,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 <path d="M12 18a6 6 0 0 0 0-12"></path>
                 <circle cx="12" cy="12" r="1"></circle>
               </svg>
-              <span className={`text-sm ${mode === "teaching" ? "font-medium text-primary" : ""}`}>
+              <span className={`text-sm ${mode === "teaching" && window.location.pathname === "/teaching" ? "font-medium text-primary" : ""}`}>
                 Teaching Mode
               </span>
             </div>
             <svg 
-              className={`w-5 h-5 ${mode === "teaching" ? "text-primary" : "text-neutral-400"}`} 
+              className={`w-5 h-5 ${mode === "teaching" && window.location.pathname === "/teaching" ? "text-primary" : "text-neutral-400"}`} 
               xmlns="http://www.w3.org/2000/svg" 
               viewBox="0 0 24 24" 
               fill="none" 
