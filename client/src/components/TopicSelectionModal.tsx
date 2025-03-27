@@ -216,21 +216,55 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredTopics.map(category => (
-                    <div 
-                      key={category.name}
-                      className="border rounded-lg p-3 hover:border-primary hover:bg-primary-50 cursor-pointer"
-                      onClick={() => setSelectedCategory(category.name)}
-                    >
-                      <h4 className="font-medium">{category.name}</h4>
-                      <p className="text-sm text-neutral-500">
-                        {category.topics.slice(0, 3).join(", ")}
-                        {category.topics.length > 3 ? "..." : ""}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium">Select a category</h3>
+                    {selectedTopic && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleConfirm}
+                        className="ml-auto"
+                      >
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          width="16" 
+                          height="16" 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          className="mr-1"
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        Done
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {filteredTopics.map(category => (
+                      <div 
+                        key={category.name}
+                        className={`border rounded-lg p-3 hover:border-primary hover:bg-primary-50 cursor-pointer
+                          ${selectedTopic === category.topics[0] ? 'border-primary bg-primary-50' : ''}`}
+                        onClick={() => {
+                          setSelectedCategory(category.name);
+                          // Automatically select the first topic when clicking on a category
+                          setSelectedTopic(category.topics[0]);
+                        }}
+                      >
+                        <h4 className="font-medium">{category.name}</h4>
+                        <p className="text-sm text-neutral-500">
+                          {category.topics.slice(0, 3).join(", ")}
+                          {category.topics.length > 3 ? "..." : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </TabsContent>
