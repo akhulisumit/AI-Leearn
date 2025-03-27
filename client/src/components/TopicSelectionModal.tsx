@@ -7,10 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Plus } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface TopicCategory {
   name: string;
@@ -58,6 +60,8 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [customTopic, setCustomTopic] = useState("");
+  const [activeTab, setActiveTab] = useState<"browse" | "custom">("browse");
   
   // Filter topics based on search term
   const filteredTopics = searchTerm 
@@ -70,13 +74,21 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
     : DEFAULT_TOPICS;
   
   const handleConfirm = () => {
-    if (selectedTopic) {
+    if (activeTab === "browse" && selectedTopic) {
       onSelectTopic(selectedTopic);
-      setSelectedTopic(null);
-      setSelectedCategory(null);
-      setSearchTerm("");
-      onOpenChange(false);
+      resetState();
+    } else if (activeTab === "custom" && customTopic.trim()) {
+      onSelectTopic(customTopic.trim());
+      resetState();
     }
+  };
+  
+  const resetState = () => {
+    setSelectedTopic(null);
+    setSelectedCategory(null);
+    setSearchTerm("");
+    setCustomTopic("");
+    onOpenChange(false);
   };
   
   return (
@@ -89,96 +101,128 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="mb-4">
-          <div className="relative">
-            <Input
-              placeholder="Search topics..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
-        </div>
-        
-        <div className="h-64 overflow-y-auto mb-4">
-          {selectedCategory ? (
-            <div>
-              <div className="flex items-center mb-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setSelectedCategory(null)}
-                  className="p-0 mr-2"
-                >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    width="16" 
-                    height="16" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    className="mr-1"
-                  >
-                    <path d="m15 18-6-6 6-6" />
-                  </svg>
-                  Back
-                </Button>
-                <h3 className="font-medium">{selectedCategory}</h3>
+        <Tabs defaultValue="browse" onValueChange={(value) => setActiveTab(value as "browse" | "custom")}>
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="browse">Browse Topics</TabsTrigger>
+            <TabsTrigger value="custom">Custom Topic</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="browse">
+            <div className="mb-4">
+              <div className="relative">
+                <Input
+                  placeholder="Search topics..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               </div>
-              
-              <div className="grid grid-cols-1 gap-2">
-                {filteredTopics
-                  .find(cat => cat.name === selectedCategory)
-                  ?.topics.map(topic => (
-                    <button
-                      key={topic}
-                      className={`text-left p-3 border rounded-lg hover:border-primary hover:bg-primary-50 
-                        ${selectedTopic === topic ? 'border-primary bg-primary-50' : ''}`}
-                      onClick={() => setSelectedTopic(topic)}
+            </div>
+            
+            <div className="h-64 overflow-y-auto mb-4">
+              {selectedCategory ? (
+                <div>
+                  <div className="flex items-center mb-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setSelectedCategory(null)}
+                      className="p-0 mr-2"
                     >
-                      {topic}
-                    </button>
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredTopics.map(category => (
-                <div 
-                  key={category.name}
-                  className="border rounded-lg p-3 hover:border-primary hover:bg-primary-50 cursor-pointer"
-                  onClick={() => setSelectedCategory(category.name)}
-                >
-                  <h4 className="font-medium">{category.name}</h4>
-                  <p className="text-sm text-neutral-500">
-                    {category.topics.slice(0, 3).join(", ")}
-                    {category.topics.length > 3 ? "..." : ""}
-                  </p>
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        width="16" 
+                        height="16" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        className="mr-1"
+                      >
+                        <path d="m15 18-6-6 6-6" />
+                      </svg>
+                      Back
+                    </Button>
+                    <h3 className="font-medium">{selectedCategory}</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-2">
+                    {filteredTopics
+                      .find(cat => cat.name === selectedCategory)
+                      ?.topics.map(topic => (
+                        <button
+                          key={topic}
+                          className={`text-left p-3 border rounded-lg hover:border-primary hover:bg-primary-50 
+                            ${selectedTopic === topic ? 'border-primary bg-primary-50' : ''}`}
+                          onClick={() => setSelectedTopic(topic)}
+                        >
+                          {topic}
+                        </button>
+                      ))}
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredTopics.map(category => (
+                    <div 
+                      key={category.name}
+                      className="border rounded-lg p-3 hover:border-primary hover:bg-primary-50 cursor-pointer"
+                      onClick={() => setSelectedCategory(category.name)}
+                    >
+                      <h4 className="font-medium">{category.name}</h4>
+                      <p className="text-sm text-neutral-500">
+                        {category.topics.slice(0, 3).join(", ")}
+                        {category.topics.length > 3 ? "..." : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </TabsContent>
+          
+          <TabsContent value="custom">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Enter custom topic:</label>
+              <Input
+                placeholder="E.g., 'Nuclear Physics' or 'South American History'"
+                value={customTopic}
+                onChange={(e) => setCustomTopic(e.target.value)}
+                className="mb-2"
+              />
+              <p className="text-sm text-muted-foreground">
+                Enter any subject you want to learn about. Be specific for better results.
+              </p>
+            </div>
+            
+            {customTopic.trim() && (
+              <div className="mb-4 p-3 border rounded-lg bg-primary-50 border-primary">
+                <div className="flex items-center">
+                  <Plus className="h-4 w-4 mr-2 text-primary" />
+                  <p className="font-medium">{customTopic}</p>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  The system will generate questions about this topic
+                </p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
         
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => {
-              setSelectedTopic(null);
-              setSelectedCategory(null);
-              setSearchTerm("");
-              onOpenChange(false);
-            }}
+            onClick={resetState}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleConfirm}
-            disabled={!selectedTopic}
+            disabled={(activeTab === "browse" && !selectedTopic) || 
+                     (activeTab === "custom" && !customTopic.trim())}
           >
             Select
           </Button>

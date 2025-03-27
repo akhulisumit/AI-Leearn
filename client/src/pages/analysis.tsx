@@ -121,6 +121,9 @@ const Analysis: React.FC = () => {
 
   const [testComplete, setTestComplete] = useState(false);
   
+  // Store answers temporarily in local state
+  const [pendingAnswers, setPendingAnswers] = useState<Map<number, string>>(new Map());
+  
   const handleSubmitAnswer = async () => {
     if (!currentQuestion) return;
     
@@ -137,43 +140,48 @@ const Analysis: React.FC = () => {
     setIsEvaluating(true);
     
     try {
-      // Store the answer but defer the evaluation until the end
-      // This makes the test much faster as we're not waiting for AI evaluation after each question
-      const saveAnswerPromise = submitAnswer(currentQuestion.id, answer, true);
+      // Just store the answer locally, don't send to server yet
+      setPendingAnswers(prev => {
+        const newPending = new Map(prev);
+        newPending.set(currentQuestion.id, answer);
+        return newPending;
+      });
       
       // If we have a pre-fetched next question, immediately show it
-      // This makes the UI feel more responsive while the save happens in the background
+      // This makes the UI feel more responsive
       if (nextQuestion) {
         setCurrentQuestion(nextQuestion);
         setNextQuestion(null);
       }
       
-      // Wait for save to complete in the background
-      await saveAnswerPromise;
+      // Check if all questions are answered locally
+      const allQuestionsAnswered = questions.every(q => 
+        userAnswers.has(q.id)
+      );
       
-      // Refresh session data after save (in background)
-      const sessionPromise = loadSession(sessionId);
-      
-      // Check if all questions are answered (also in background)
-      const answersResponse = await fetch(`/api/sessions/${sessionId}/questions-with-answers`);
-      const updatedAnswers = await answersResponse.json();
-      const allAnswered = updatedAnswers.questionsWithAnswers.every((q: any) => q.answer);
-      
-      // Make sure session data is loaded
-      await sessionPromise;
-      
-      if (allAnswered) {
-        // Show a message that we're evaluating all answers
+      if (allQuestionsAnswered || (nextQuestion === null && currentQuestion.id === questions[questions.length - 1].id)) {
+        // Show a message that we're submitting all answers
         toast({
           title: "Test Complete!",
-          description: "Evaluating all your answers...",
+          description: "Submitting and evaluating all your answers...",
           duration: 3000,
         });
         
         setTestComplete(true);
         
-        // Evaluate all answers at once
+        // Submit all answers to the server
+        const answerSubmissionPromises = Array.from(pendingAnswers.entries()).map(([questionId, userAnswer]) => 
+          submitAnswer(questionId, userAnswer, true)
+        );
+        
+        // Wait for all submissions to complete
+        await Promise.all(answerSubmissionPromises);
+        
+        // Now evaluate all answers at once
         await submitAllAnswers(sessionId);
+        
+        // Refresh session data
+        await loadSession(sessionId);
         
         // Create knowledge areas based on question topics if not already existing
         if (knowledgeAreas.length === 0) {
@@ -220,7 +228,7 @@ const Analysis: React.FC = () => {
         navigate(`/feedback?sessionId=${sessionId}`);
       } else if (!nextQuestion) {
         // Only if we didn't already set the next question, find one now
-        const nextUnansweredQuestion = updatedAnswers.questionsWithAnswers.find((q: any) => !q.answer);
+        const nextUnansweredQuestion = questions.find(q => !userAnswers.has(q.id));
         if (nextUnansweredQuestion) {
           setCurrentQuestion(nextUnansweredQuestion);
         }
