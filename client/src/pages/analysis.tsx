@@ -16,7 +16,7 @@ import Footer from "@/components/Footer";
 import WorkflowProgress from "@/components/WorkflowProgress";
 import SidePanel from "@/components/SidePanel";
 import { useSession } from "@/contexts/SessionContext";
-import { generateQuestions, submitAnswer } from "@/lib/gemini";
+import { generateQuestions, submitAnswer, submitAllAnswers } from "@/lib/gemini";
 import { Question, KnowledgeArea } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -119,6 +119,8 @@ const Analysis: React.FC = () => {
     }
   }, [questions, currentQuestion, answers]);
 
+  const [testComplete, setTestComplete] = useState(false);
+  
   const handleSubmitAnswer = async () => {
     if (!currentQuestion) return;
     
@@ -135,20 +137,21 @@ const Analysis: React.FC = () => {
     setIsEvaluating(true);
     
     try {
-      // Start the evaluation process
-      const evaluationPromise = submitAnswer(currentQuestion.id, answer);
+      // Store the answer but defer the evaluation until the end
+      // This makes the test much faster as we're not waiting for AI evaluation after each question
+      const saveAnswerPromise = submitAnswer(currentQuestion.id, answer, true);
       
       // If we have a pre-fetched next question, immediately show it
-      // This makes the UI feel more responsive while the evaluation happens in the background
+      // This makes the UI feel more responsive while the save happens in the background
       if (nextQuestion) {
         setCurrentQuestion(nextQuestion);
         setNextQuestion(null);
       }
       
-      // Wait for evaluation to complete in the background
-      await evaluationPromise;
+      // Wait for save to complete in the background
+      await saveAnswerPromise;
       
-      // Refresh session data after evaluation (in background)
+      // Refresh session data after save (in background)
       const sessionPromise = loadSession(sessionId);
       
       // Check if all questions are answered (also in background)
@@ -160,6 +163,18 @@ const Analysis: React.FC = () => {
       await sessionPromise;
       
       if (allAnswered) {
+        // Show a message that we're evaluating all answers
+        toast({
+          title: "Test Complete!",
+          description: "Evaluating all your answers...",
+          duration: 3000,
+        });
+        
+        setTestComplete(true);
+        
+        // Evaluate all answers at once
+        await submitAllAnswers(sessionId);
+        
         // Create knowledge areas based on question topics if not already existing
         if (knowledgeAreas.length === 0) {
           const topics = new Set<string>();

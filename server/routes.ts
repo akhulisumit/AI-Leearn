@@ -79,7 +79,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Topic and sessionId are required' });
       }
       
-      const prompt = `Generate a few easy-to-hard-level questions on ${topic} to test my knowledge. Format the response as a JSON array of objects, where each object has 'question' and 'difficulty' properties. Difficulty should be one of: 'easy', 'medium', or 'hard'. Give me 6 questions total: 2 easy, 2 medium, and 2 hard questions.`;
+      // Get existing questions to check for duplicates
+      const existingQuestions = await storage.getSessionQuestions(sessionId);
+      const existingQuestionsText = existingQuestions.map(q => q.question.toLowerCase());
+      
+      // Add context to make generated questions more unique
+      let contextPrompt = "";
+      if (existingQuestionsText.length > 0) {
+        contextPrompt = `I already have the following questions in my test (DO NOT repeat these or create similar questions):\n${existingQuestionsText.join('\n')}\n\n`;
+      }
+      
+      const prompt = `${contextPrompt}Generate UNIQUE and diverse questions on ${topic} to test my knowledge. 
+      
+      IMPORTANT: Each question must test a different concept within ${topic}. Do not create questions that are similar to each other.
+      
+      Format the response as a JSON array of objects, where each object has 'question' and 'difficulty' properties. Difficulty should be one of: 'easy', 'medium', or 'hard'.
+      
+      Give me 6 questions total: 2 easy, 2 medium, and 2 hard questions.
+      
+      Make sure every question is testing a completely different aspect of ${topic}.`;
       
       try {
         const result = await model.generateContent(prompt);
@@ -155,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Answer endpoints
   app.post('/api/answers', async (req: Request, res: Response) => {
     try {
-      const { questionId, userAnswer } = req.body;
+      const { questionId, userAnswer, deferEvaluation } = req.body;
       if (!questionId || !userAnswer) {
         return res.status(400).json({ message: 'Question ID and user answer are required' });
       }
@@ -174,12 +192,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userAnswer,
         evaluation: {
           correctness: 0,
-          feedback: "Evaluating your answer...",
+          feedback: deferEvaluation ? "Evaluation deferred until test completion" : "Evaluating your answer...",
           strengths: [],
           weaknesses: []
         },
         createdAt: new Date().toISOString()
       };
+      
+      // If deferEvaluation is true, we'll save the answer without evaluating it
+      if (deferEvaluation) {
+        const answerData = insertAnswerSchema.parse({
+          questionId,
+          userAnswer,
+          evaluation: {
+            correctness: 0,
+            feedback: "Pending evaluation at test completion",
+            strengths: [],
+            weaknesses: []
+          }
+        });
+        
+        const savedAnswer = await storage.createAnswer(answerData);
+        return res.status(200).json(savedAnswer);
+      }
       
       // Send a quick initial response so the client can proceed
       // This is a performance optimization - the client doesn't need to wait for AI evaluation
@@ -246,6 +281,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!res.headersSent) {
         res.status(500).json({ message: 'Failed to process answer submission', error });
       }
+    }
+  });
+  
+  // New endpoint to evaluate all answers at once
+  app.post('/api/sessions/:sessionId/evaluate-all-answers', async (req: Request, res: Response) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      if (isNaN(sessionId)) {
+        return res.status(400).json({ message: 'Invalid session ID' });
+      }
+      
+      // Get the session details
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+      
+      // Get all questions and answers for this session
+      const questionsWithAnswers = await storage.getSessionQuestionsWithAnswers(sessionId);
+      
+      // Get the answers that need evaluation (have no proper evaluation yet)
+      const pendingEvaluations = questionsWithAnswers.filter(qa => {
+        if (!qa.answer) return false;
+        
+        // Type safety check for the evaluation object
+        const evaluation = qa.answer.evaluation as { correctness?: number; feedback?: string };
+        return (evaluation?.correctness === 0 || 
+                evaluation?.feedback === "Pending evaluation at test completion");
+      });
+      
+      // Process each answer that needs evaluation
+      const evaluationPromises = pendingEvaluations.map(async (qa) => {
+        if (!qa.answer) return Promise.resolve();
+        
+        // Evaluate the answer using AI
+        const prompt = `Question: ${qa.question}\nStudent's Answer: ${qa.answer.userAnswer}\n\nEvaluate this answer based on correctness, depth, and clarity. Provide a JSON object with the following structure:
+        {
+          "correctness": <number between 0-100>,
+          "feedback": "<detailed feedback>",
+          "strengths": ["<strength1>", "<strength2>", ...],
+          "weaknesses": ["<weakness1>", "<weakness2>", ...]
+        }`;
+        
+        try {
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          const text = response.text();
+          
+          // Parse the evaluation
+          let evaluation;
+          try {
+            // Extract JSON from response
+            const jsonMatch = text.match(/{[\s\S]*}/);
+            if (jsonMatch) {
+              evaluation = JSON.parse(jsonMatch[0]);
+            } else {
+              throw new Error('No JSON found in AI response');
+            }
+          } catch (error) {
+            console.error('Failed to parse evaluation from AI response:', error);
+            evaluation = {
+              correctness: 50,
+              feedback: "We had trouble evaluating your answer automatically.",
+              strengths: ["Submission received"],
+              weaknesses: ["Evaluation process encountered an error"]
+            };
+          }
+          
+          // Update the answer with the evaluation
+          const answerData = insertAnswerSchema.parse({
+            questionId: qa.id,
+            userAnswer: qa.answer.userAnswer,
+            evaluation
+          });
+          
+          // Create a new answer record with the evaluation
+          await storage.createAnswer(answerData);
+          
+          return true;
+        } catch (error) {
+          console.error('Error evaluating answer:', error);
+          return false;
+        }
+      });
+      
+      // Wait for all evaluations to complete
+      await Promise.allSettled(evaluationPromises);
+      
+      res.json({ success: true, message: "All answers evaluated" });
+    } catch (error) {
+      console.error('Error evaluating answers:', error);
+      res.status(500).json({ message: 'Failed to evaluate answers', error });
     }
   });
 

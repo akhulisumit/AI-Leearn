@@ -31,8 +31,12 @@ export async function generateQuestions(topic: string, sessionId: number): Promi
   return response.json();
 }
 
-export async function submitAnswer(questionId: number, userAnswer: string): Promise<EvaluateAnswerResponse> {
-  const response = await apiRequest('POST', '/api/answers', { questionId, userAnswer });
+export async function submitAnswer(questionId: number, userAnswer: string, deferEvaluation: boolean = false): Promise<EvaluateAnswerResponse> {
+  const response = await apiRequest('POST', '/api/answers', { 
+    questionId, 
+    userAnswer,
+    deferEvaluation // Tell the server to defer evaluation if needed
+  });
   
   // If we get a 202 Accepted status, the server is processing the evaluation 
   // asynchronously and has sent back a temporary response
@@ -43,6 +47,12 @@ export async function submitAnswer(questionId: number, userAnswer: string): Prom
   }
   
   return response.json();
+}
+
+// New function to submit all answers for evaluation at once
+export async function submitAllAnswers(sessionId: number): Promise<boolean> {
+  const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate-all-answers`, {});
+  return response.status === 200;
 }
 
 export async function getTeachingContent(topic: string, question: string): Promise<AIResponse> {
