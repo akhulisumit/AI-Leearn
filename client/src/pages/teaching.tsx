@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useLocation, useRoute } from "wouter";
 import { 
   Card, 
@@ -21,6 +21,33 @@ import { getTeachingContent, generateStudyNotes } from "@/lib/gemini";
 import { useToast } from "@/hooks/use-toast";
 import { KnowledgeArea } from "@shared/schema";
 import ReactMarkdown from "react-markdown";
+
+// Define markdown components outside of the component render function
+const markdownComponentsNotes = {
+  p: ({node, ...props}: any) => <p className="my-2" {...props} />,
+  h1: ({node, ...props}: any) => <h1 className="text-2xl font-bold mt-6 mb-4" {...props} />,
+  h2: ({node, ...props}: any) => <h2 className="text-xl font-bold mt-5 mb-3" {...props} />,
+  h3: ({node, ...props}: any) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
+  ul: ({node, ...props}: any) => <ul className="list-disc pl-6 my-3" {...props} />,
+  ol: ({node, ...props}: any) => <ol className="list-decimal pl-6 my-3" {...props} />,
+  li: ({node, ...props}: any) => <li className="my-1" {...props} />,
+  code: ({node, ...props}: any) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
+  pre: ({node, ...props}: any) => <pre className="bg-neutral-100 p-3 rounded my-3 overflow-x-auto" {...props} />,
+  blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-primary/30 pl-4 italic my-3" {...props} />,
+};
+
+const markdownComponentsMessage = {
+  p: ({node, ...props}: any) => <p className="my-2" {...props} />,
+  h1: ({node, ...props}: any) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+  h2: ({node, ...props}: any) => <h2 className="text-lg font-bold mt-3 mb-2" {...props} />,
+  h3: ({node, ...props}: any) => <h3 className="text-base font-bold mt-2 mb-1" {...props} />,
+  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 my-2" {...props} />,
+  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 my-2" {...props} />,
+  li: ({node, ...props}: any) => <li className="my-1" {...props} />,
+  code: ({node, ...props}: any) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
+  pre: ({node, ...props}: any) => <pre className="bg-neutral-100 p-2 rounded my-2 overflow-x-auto text-sm" {...props} />,
+  blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-primary/30 pl-3 italic my-2" {...props} />,
+};
 
 interface AIMessage {
   role: 'user' | 'ai';
@@ -345,18 +372,7 @@ const Teaching: React.FC = () => {
                         </div>
                       ) : (
                         <ReactMarkdown
-                          components={{
-                            p: ({node, ...props}) => <p className="my-2" {...props} />,
-                            h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-6 mb-4" {...props} />,
-                            h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-5 mb-3" {...props} />,
-                            h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
-                            ul: ({node, ...props}) => <ul className="list-disc pl-6 my-3" {...props} />,
-                            ol: ({node, ...props}) => <ol className="list-decimal pl-6 my-3" {...props} />,
-                            li: ({node, ...props}) => <li className="my-1" {...props} />,
-                            code: ({node, ...props}) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
-                            pre: ({node, ...props}) => <pre className="bg-neutral-100 p-3 rounded my-3 overflow-x-auto" {...props} />,
-                            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/30 pl-4 italic my-3" {...props} />,
-                          }}
+                          components={markdownComponentsNotes}
                         >
                           {studyNotes || ""}
                         </ReactMarkdown>
@@ -405,18 +421,7 @@ const Teaching: React.FC = () => {
                                       </div>
                                     ) : (
                                       <ReactMarkdown
-                                        components={{
-                                          p: ({node, ...props}) => <p className="my-2" {...props} />,
-                                          h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
-                                          h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-3 mb-2" {...props} />,
-                                          h3: ({node, ...props}) => <h3 className="text-base font-bold mt-2 mb-1" {...props} />,
-                                          ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2" {...props} />,
-                                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-2" {...props} />,
-                                          li: ({node, ...props}) => <li className="my-1" {...props} />,
-                                          code: ({node, ...props}) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
-                                          pre: ({node, ...props}) => <pre className="bg-neutral-100 p-2 rounded my-2 overflow-x-auto text-sm" {...props} />,
-                                          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/30 pl-3 italic my-2" {...props} />,
-                                        }}
+                                        components={markdownComponentsMessage}
                                       >
                                         {msg.content}
                                       </ReactMarkdown>
