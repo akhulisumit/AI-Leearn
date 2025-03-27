@@ -49,10 +49,36 @@ export async function submitAnswer(questionId: number, userAnswer: string, defer
   return response.json();
 }
 
-// New function to submit all answers for evaluation at once
-export async function submitAllAnswers(sessionId: number): Promise<boolean> {
-  const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate-all-answers`, {});
-  return response.status === 200;
+export interface BatchEvaluationResponse {
+  success: boolean;
+  message: string;
+  evaluation?: {
+    totalScore: number;
+    feedback: string;
+    strengths: string[];
+    weaknesses: string[];
+    recommendedAreas: string[];
+  }
+}
+
+// Enhanced function to submit all answers for evaluation at once - now returns the evaluation data
+export async function submitAllAnswers(sessionId: number): Promise<BatchEvaluationResponse> {
+  try {
+    const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate-all-answers`, {});
+    if (!response.ok) {
+      throw new Error(`API returned status: ${response.status}`);
+    }
+    
+    // Parse the evaluation results
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error in submitAllAnswers:", error);
+    return {
+      success: false,
+      message: "We're having trouble evaluating your answers right now. Please try again later."
+    };
+  }
 }
 
 export async function getTeachingContent(topic: string, question: string): Promise<AIResponse> {

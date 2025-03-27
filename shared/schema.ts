@@ -119,6 +119,14 @@ export interface EvaluationResult {
   weaknesses: string[];
 }
 
+export interface BatchEvaluationResult {
+  totalScore: number;
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
+  recommendedAreas: string[];
+}
+
 export interface AIResponse {
   text: string;
   followUpQuestions?: string[];

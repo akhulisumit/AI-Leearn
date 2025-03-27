@@ -191,11 +191,23 @@ const Analysis: React.FC = () => {
             duration: 3000,
           });
           
-          // Now evaluate all answers at once
+          // Now evaluate all answers at once and get evaluation summary
           const result = await submitAllAnswers(sessionId);
           
-          if (!result) {
-            throw new Error("Failed to evaluate answers");
+          if (!result.success) {
+            throw new Error("Failed to evaluate answers: " + result.message);
+          }
+          
+          // Show a summary of the evaluation (from the batch evaluation)
+          if (result.evaluation) {
+            toast({
+              title: `Test Evaluation Complete: ${result.evaluation.totalScore}%`,
+              description: result.evaluation.feedback.substring(0, 100) + "...",
+              duration: 5000,
+            });
+            
+            // TODO: Store evaluation summary for feedback page
+            // This would normally be saved in the session context
           }
           
           // Refresh session data

@@ -68,44 +68,76 @@ const Feedback: React.FC = () => {
       
       setAnsweredQuestions(answered);
       
-      // Calculate overall score
-      let totalCorrectness = 0;
-      const allStrengths: string[] = [];
-      const allWeaknesses: string[] = [];
+      // Check if any answer has a 'batchEvaluation' property, which would indicate
+      // that we have received a batch evaluation from the server
+      let hasBatchEvaluation = false;
       
-      answered.forEach(q => {
-        const answer = answers.get(q.id);
-        if (answer && typeof answer.evaluation === 'object' && answer.evaluation) {
-          const evaluation = answer.evaluation as { 
-            correctness: number; 
+      // Convert entries to array first to avoid TypeScript downlevelIteration issue
+      const answerEntries = Array.from(answers.entries());
+      for (let i = 0; i < answerEntries.length; i++) {
+        const [, answer] = answerEntries[i];
+        if (answer.batchEvaluation) {
+          hasBatchEvaluation = true;
+          const batchEval = answer.batchEvaluation as {
+            totalScore: number;
             feedback: string;
-            strengths?: string[];
-            weaknesses?: string[];
+            strengths: string[];
+            weaknesses: string[];
+            recommendedAreas?: string[];
           };
           
-          totalCorrectness += evaluation.correctness;
-          
-          // Collect strengths and weaknesses
-          if (evaluation.strengths && Array.isArray(evaluation.strengths)) {
-            allStrengths.push(...evaluation.strengths);
-          }
-          if (evaluation.weaknesses && Array.isArray(evaluation.weaknesses)) {
-            allWeaknesses.push(...evaluation.weaknesses);
-          }
+          // Use the batch evaluation instead of calculating
+          setOverallScore(batchEval.totalScore);
+          setStrengthsAndWeaknesses({
+            strengths: batchEval.strengths || [],
+            weaknesses: batchEval.weaknesses || [],
+            recommendedAreas: batchEval.recommendedAreas || []
+          });
+          break;
         }
-      });
+      }
       
-      const avgScore = answered.length > 0 ? totalCorrectness / answered.length : 0;
-      setOverallScore(Math.round(avgScore));
-      
-      // Deduplicate strengths and weaknesses
-      const uniqueStrengths = Array.from(new Set(allStrengths));
-      const uniqueWeaknesses = Array.from(new Set(allWeaknesses));
-      
-      setStrengthsAndWeaknesses({
-        strengths: uniqueStrengths.slice(0, 5), // Limit to top 5
-        weaknesses: uniqueWeaknesses.slice(0, 5) // Limit to top 5
-      });
+      // Only calculate from individual answers if no batch evaluation is available
+      if (!hasBatchEvaluation) {
+        // Calculate overall score
+        let totalCorrectness = 0;
+        const allStrengths: string[] = [];
+        const allWeaknesses: string[] = [];
+        
+        answered.forEach(q => {
+          const answer = answers.get(q.id);
+          if (answer && typeof answer.evaluation === 'object' && answer.evaluation) {
+            const evaluation = answer.evaluation as { 
+              correctness: number; 
+              feedback: string;
+              strengths?: string[];
+              weaknesses?: string[];
+            };
+            
+            totalCorrectness += evaluation.correctness;
+            
+            // Collect strengths and weaknesses
+            if (evaluation.strengths && Array.isArray(evaluation.strengths)) {
+              allStrengths.push(...evaluation.strengths);
+            }
+            if (evaluation.weaknesses && Array.isArray(evaluation.weaknesses)) {
+              allWeaknesses.push(...evaluation.weaknesses);
+            }
+          }
+        });
+        
+        const avgScore = answered.length > 0 ? totalCorrectness / answered.length : 0;
+        setOverallScore(Math.round(avgScore));
+        
+        // Deduplicate strengths and weaknesses
+        const uniqueStrengths = Array.from(new Set(allStrengths));
+        const uniqueWeaknesses = Array.from(new Set(allWeaknesses));
+        
+        setStrengthsAndWeaknesses({
+          strengths: uniqueStrengths.slice(0, 5), // Limit to top 5
+          weaknesses: uniqueWeaknesses.slice(0, 5) // Limit to top 5
+        });
+      }
     }
   }, [questions, answers]);
   

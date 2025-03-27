@@ -284,7 +284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // New endpoint to evaluate all answers at once
+  // New endpoint to evaluate all answers at once and provide overall evaluation
   app.post('/api/sessions/:sessionId/evaluate-all-answers', async (req: Request, res: Response) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
@@ -301,75 +301,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all questions and answers for this session
       const questionsWithAnswers = await storage.getSessionQuestionsWithAnswers(sessionId);
       
-      // Get the answers that need evaluation (have no proper evaluation yet)
-      const pendingEvaluations = questionsWithAnswers.filter(qa => {
-        if (!qa.answer) return false;
-        
-        // Type safety check for the evaluation object
-        const evaluation = qa.answer.evaluation as { correctness?: number; feedback?: string };
-        return (evaluation?.correctness === 0 || 
-                evaluation?.feedback === "Pending evaluation at test completion");
+      // Filter questions with answers for batch evaluation
+      const answeredQuestions = questionsWithAnswers.filter(qa => qa.answer);
+      
+      if (answeredQuestions.length === 0) {
+        return res.status(400).json({ message: 'No answers found for this session' });
+      }
+      
+      // Prepare the batch evaluation prompt for AI - focus on overall evaluation
+      let promptText = `I've completed a test on ${session.topic}. Please evaluate my performance on ALL of the following questions and answers at once:\n\n`;
+      
+      answeredQuestions.forEach((qa, index) => {
+        promptText += `Question ${index + 1} (${qa.difficulty}): ${qa.question}\n`;
+        promptText += `My Answer: ${qa.answer?.userAnswer}\n\n`;
       });
       
-      // Process each answer that needs evaluation
-      const evaluationPromises = pendingEvaluations.map(async (qa) => {
-        if (!qa.answer) return Promise.resolve();
+      promptText += `For EACH answer above, give a correctness score (0-100).
+      
+      Then provide a comprehensive evaluation with:
+      1. An overall score for the entire test (0-100)
+      2. General feedback on my performance
+      3. My key strengths based on these answers
+      4. Areas that need improvement
+      5. Recommended specific topics to study further
+      
+      Format your response as a JSON object with the following structure:
+      {
+        "individualScores": [score1, score2, ...],
+        "individualFeedback": ["feedback1", "feedback2", ...],
+        "totalScore": <overall score 0-100>,
+        "feedback": "<general feedback>",
+        "strengths": ["<strength1>", "<strength2>", ...],
+        "weaknesses": ["<weakness1>", "<weakness2>", ...],
+        "recommendedAreas": ["<area1>", "<area2>", ...]
+      }`;
+      
+      try {
+        // Process batch evaluation with AI
+        const result = await model.generateContent(promptText);
+        const response = await result.response;
+        const text = response.text();
         
-        // Evaluate the answer using AI
-        const prompt = `Question: ${qa.question}\nStudent's Answer: ${qa.answer.userAnswer}\n\nEvaluate this answer based on correctness, depth, and clarity. Provide a JSON object with the following structure:
-        {
-          "correctness": <number between 0-100>,
-          "feedback": "<detailed feedback>",
-          "strengths": ["<strength1>", "<strength2>", ...],
-          "weaknesses": ["<weakness1>", "<weakness2>", ...]
-        }`;
+        // Store the original AI response for debugging
+        console.log('AI response for batch evaluation:', text.substring(0, 200) + '...');
+        
+        // Parse the evaluation
+        let batchEvaluation: {
+          individualScores: number[];
+          individualFeedback?: string[];
+          totalScore: number;
+          feedback: string;
+          strengths: string[];
+          weaknesses: string[];
+          recommendedAreas: string[];
+        };
         
         try {
-          const result = await model.generateContent(prompt);
-          const response = await result.response;
-          const text = response.text();
-          
-          // Parse the evaluation
-          let evaluation;
-          try {
-            // Extract JSON from response
-            const jsonMatch = text.match(/{[\s\S]*}/);
-            if (jsonMatch) {
-              evaluation = JSON.parse(jsonMatch[0]);
-            } else {
-              throw new Error('No JSON found in AI response');
-            }
-          } catch (error) {
-            console.error('Failed to parse evaluation from AI response:', error);
-            evaluation = {
-              correctness: 50,
-              feedback: "We had trouble evaluating your answer automatically.",
-              strengths: ["Submission received"],
-              weaknesses: ["Evaluation process encountered an error"]
-            };
+          // Extract JSON from response
+          const jsonMatch = text.match(/{[\s\S]*}/);
+          if (jsonMatch) {
+            batchEvaluation = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error('No JSON found in AI response');
           }
           
-          // Update the answer with the evaluation
-          const answerData = insertAnswerSchema.parse({
-            questionId: qa.id,
-            userAnswer: qa.answer.userAnswer,
-            evaluation
+          // Check if we have all the required fields
+          if (!batchEvaluation.individualScores || !Array.isArray(batchEvaluation.individualScores)) {
+            throw new Error('Missing individualScores array in AI response');
+          }
+          
+          // Update individual answers with the evaluation results
+          const updatePromises = answeredQuestions.map(async (qa, index) => {
+            if (!qa.answer) return Promise.resolve();
+            
+            const score = batchEvaluation.individualScores[index] || 0;
+            const feedback = (batchEvaluation.individualFeedback && batchEvaluation.individualFeedback[index]) || 
+                             'See overall feedback for details';
+            
+            // Create a batch evaluation object to add to one answer
+            // This will be used in the frontend to display the overall evaluation
+            const batchEvaluationData = {
+              totalScore: batchEvaluation.totalScore || 0,
+              feedback: batchEvaluation.feedback || 'No overall feedback provided',
+              strengths: batchEvaluation.strengths || [],
+              weaknesses: batchEvaluation.weaknesses || [],
+              recommendedAreas: batchEvaluation.recommendedAreas || []
+            };
+            
+            // Update the answer with the evaluation
+            const evaluation = {
+              correctness: score,
+              feedback: feedback,
+              strengths: batchEvaluation.strengths || [],
+              weaknesses: batchEvaluation.weaknesses || []
+            };
+            
+            // The first answer will also store the batch evaluation data
+            // This is a bit of a hack but allows us to retrieve it easily from the frontend
+            const answerData = insertAnswerSchema.parse({
+              questionId: qa.id,
+              userAnswer: qa.answer.userAnswer,
+              evaluation,
+              // Only attach the batch evaluation to the first answer for retrieval in the UI
+              ...(index === 0 ? { batchEvaluation: batchEvaluationData } : {})
+            });
+            
+            // Save the updated answer
+            return storage.createAnswer(answerData);
           });
           
-          // Create a new answer record with the evaluation
-          await storage.createAnswer(answerData);
+          // Wait for all updates to complete
+          await Promise.all(updatePromises);
           
-          return true;
-        } catch (error) {
-          console.error('Error evaluating answer:', error);
-          return false;
+          // Return success with evaluation summary
+          res.json({ 
+            message: 'Evaluation completed successfully', 
+            success: true,
+            evaluation: {
+              totalScore: batchEvaluation.totalScore || 0,
+              feedback: batchEvaluation.feedback || 'No overall feedback provided',
+              strengths: batchEvaluation.strengths || [],
+              weaknesses: batchEvaluation.weaknesses || [],
+              recommendedAreas: batchEvaluation.recommendedAreas || []
+            }
+          });
+          
+        } catch (parseError: unknown) {
+          const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parsing error';
+          console.error('Error parsing AI response:', parseError);
+          res.status(500).json({ message: 'Error processing evaluation results', error: errorMessage });
         }
-      });
-      
-      // Wait for all evaluations to complete
-      await Promise.allSettled(evaluationPromises);
-      
-      res.json({ success: true, message: "All answers evaluated" });
+      } catch (aiError: unknown) {
+        const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown AI error';
+        console.error('Error generating content from AI:', aiError);
+        res.status(500).json({ message: 'AI service error', error: errorMessage });
+      }
     } catch (error) {
       console.error('Error evaluating answers:', error);
       res.status(500).json({ message: 'Failed to evaluate answers', error });
