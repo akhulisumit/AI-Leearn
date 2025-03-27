@@ -11,6 +11,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import WorkflowProgress from "@/components/WorkflowProgress";
@@ -205,6 +211,7 @@ const Feedback: React.FC = () => {
     }
   };
   
+  // Simplified AI evaluation that just focuses on strengths, weaknesses and overall score
   const handleGetAIEvaluation = async () => {
     if (!sessionId || isEvaluating) return;
     
@@ -216,15 +223,16 @@ const Feedback: React.FC = () => {
     });
     
     try {
-      const result = await evaluateTest(sessionId);
+      // Use the batch evaluation endpoint instead since it's more reliable
+      const response = await submitAllAnswers(sessionId);
       
-      if (result) {
-        // Update the score and feedback with the AI evaluation
-        setOverallScore(result.totalScore);
+      if (response.success && response.evaluation) {
+        // Update the score and feedback with the batch evaluation
+        setOverallScore(response.evaluation.totalScore);
         setStrengthsAndWeaknesses({
-          strengths: result.strengths || [],
-          weaknesses: result.weaknesses || [],
-          recommendedAreas: result.recommendedAreas || []
+          strengths: response.evaluation.strengths || [],
+          weaknesses: response.evaluation.weaknesses || [],
+          recommendedAreas: response.evaluation.recommendedAreas || []
         });
         
         toast({
@@ -232,6 +240,11 @@ const Feedback: React.FC = () => {
           description: "Your test has been analyzed by our AI.",
           duration: 2000,
         });
+        
+        // Reload the session to get the updated answers with batch evaluation
+        await loadSession(sessionId);
+      } else {
+        throw new Error(response.message || "Evaluation failed");
       }
     } catch (error) {
       console.error("Failed to get AI evaluation:", error);
@@ -475,64 +488,65 @@ const Feedback: React.FC = () => {
               </Card>
               
               {answeredQuestions.length > 0 && (
-                <Card className="shadow-md">
-                  <CardHeader>
-                    <CardTitle>Detailed Feedback</CardTitle>
-                    <CardDescription>
-                      Review your answers and AI feedback
-                    </CardDescription>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="space-y-6">
-                      {answeredQuestions.map((qa) => {
-                        const answer = answers.get(qa.id);
-                        if (!answer) return null;
-                        
-                        // Type assertion for evaluation
-                        const evaluation = typeof answer.evaluation === 'object' && answer.evaluation ? 
-                          (answer.evaluation as { 
-                            correctness: number; 
-                            feedback: string;
-                            strengths?: string[];
-                            weaknesses?: string[];
-                          }) : 
-                          { correctness: 0, feedback: "No evaluation available" };
-                        
-                        return (
-                          <div key={qa.id} className="border rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="font-medium">{qa.question}</h3>
-                              <span className={`text-sm ${getDifficultyColor(qa.difficulty)}`}>
-                                {qa.difficulty}
-                              </span>
-                            </div>
-                            
-                            <div className="bg-neutral-50 p-3 rounded-md mb-3">
-                              <h4 className="text-sm font-medium mb-1">Your Answer:</h4>
-                              <p className="text-neutral-700">{answer.userAnswer}</p>
-                            </div>
-                            
-                            <div className="mb-3">
-                              <div className="flex justify-between mb-1">
-                                <h4 className="text-sm font-medium">Correctness:</h4>
-                                <span className={`text-sm ${getScoreColor(evaluation.correctness)}`}>
-                                  {evaluation.correctness}%
+                <Accordion type="single" collapsible className="w-full shadow-md">
+                  <AccordionItem value="details">
+                    <AccordionTrigger className="px-4 py-2 bg-gray-50">
+                      <div className="flex justify-between w-full">
+                        <span className="font-medium">View Detailed Feedback</span>
+                        <span className="text-sm text-gray-500">{answeredQuestions.length} questions answered</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 py-3">
+                      <div className="space-y-6">
+                        {answeredQuestions.map((qa) => {
+                          const answer = answers.get(qa.id);
+                          if (!answer) return null;
+                          
+                          // Type assertion for evaluation
+                          const evaluation = typeof answer.evaluation === 'object' && answer.evaluation ? 
+                            (answer.evaluation as { 
+                              correctness: number; 
+                              feedback: string;
+                              strengths?: string[];
+                              weaknesses?: string[];
+                            }) : 
+                            { correctness: 0, feedback: "No evaluation available" };
+                          
+                          return (
+                            <div key={qa.id} className="border rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="font-medium">{qa.question}</h3>
+                                <span className={`text-sm ${getDifficultyColor(qa.difficulty)}`}>
+                                  {qa.difficulty}
                                 </span>
                               </div>
-                              <Progress value={evaluation.correctness} className="h-2" />
+                              
+                              <div className="bg-neutral-50 p-3 rounded-md mb-3">
+                                <h4 className="text-sm font-medium mb-1">Your Answer:</h4>
+                                <p className="text-neutral-700">{answer.userAnswer}</p>
+                              </div>
+                              
+                              <div className="mb-3">
+                                <div className="flex justify-between mb-1">
+                                  <h4 className="text-sm font-medium">Correctness:</h4>
+                                  <span className={`text-sm ${getScoreColor(evaluation.correctness)}`}>
+                                    {evaluation.correctness}%
+                                  </span>
+                                </div>
+                                <Progress value={evaluation.correctness} className="h-2" />
+                              </div>
+                              
+                              <div>
+                                <h4 className="text-sm font-medium mb-1">Feedback:</h4>
+                                <p className="text-neutral-700 text-sm">{evaluation.feedback}</p>
+                              </div>
                             </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium mb-1">Feedback:</h4>
-                              <p className="text-neutral-700 text-sm">{evaluation.feedback}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
+                          );
+                        })}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               )}
             </div>
           </div>
