@@ -20,6 +20,7 @@ import { useSession } from "@/contexts/SessionContext";
 import { getTeachingContent, generateStudyNotes } from "@/lib/gemini";
 import { useToast } from "@/hooks/use-toast";
 import { KnowledgeArea } from "@shared/schema";
+import ReactMarkdown from "react-markdown";
 
 interface AIMessage {
   role: 'user' | 'ai';
@@ -332,8 +333,34 @@ const Teaching: React.FC = () => {
                   {studyNotes ? (
                     // Study Notes View
                     <div className="prose prose-sm max-w-none">
-                      {/* Use a markdown renderer here if needed */}
-                      <div dangerouslySetInnerHTML={{ __html: studyNotes.replace(/\n/g, '<br>') }} />
+                      {generatingNotes ? (
+                        <div className="space-y-4">
+                          <Skeleton className="h-6 w-3/4" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-2/3" />
+                          <Skeleton className="h-6 w-1/2" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-full" />
+                        </div>
+                      ) : (
+                        <ReactMarkdown
+                          components={{
+                            p: ({node, ...props}) => <p className="my-2" {...props} />,
+                            h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-6 mb-4" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-5 mb-3" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc pl-6 my-3" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal pl-6 my-3" {...props} />,
+                            li: ({node, ...props}) => <li className="my-1" {...props} />,
+                            code: ({node, ...props}) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
+                            pre: ({node, ...props}) => <pre className="bg-neutral-100 p-3 rounded my-3 overflow-x-auto" {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/30 pl-4 italic my-3" {...props} />,
+                          }}
+                        >
+                          {studyNotes || ""}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   ) : (
                     // Teaching Mode View
@@ -369,8 +396,31 @@ const Teaching: React.FC = () => {
                                 </div>
                               ) : (
                                 <div className="space-y-3 max-w-[90%]">
-                                  <div className="prose prose-sm">
-                                    <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br>') }} />
+                                  <div className="prose prose-sm p-4 rounded-lg bg-primary/5 border border-primary/10">
+                                    {isLoading && index === messages.length - 1 ? (
+                                      <div className="space-y-2">
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                      </div>
+                                    ) : (
+                                      <ReactMarkdown
+                                        components={{
+                                          p: ({node, ...props}) => <p className="my-2" {...props} />,
+                                          h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+                                          h2: ({node, ...props}) => <h2 className="text-lg font-bold mt-3 mb-2" {...props} />,
+                                          h3: ({node, ...props}) => <h3 className="text-base font-bold mt-2 mb-1" {...props} />,
+                                          ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2" {...props} />,
+                                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-2" {...props} />,
+                                          li: ({node, ...props}) => <li className="my-1" {...props} />,
+                                          code: ({node, ...props}) => <code className="bg-neutral-100 px-1 py-0.5 rounded text-sm" {...props} />,
+                                          pre: ({node, ...props}) => <pre className="bg-neutral-100 p-2 rounded my-2 overflow-x-auto text-sm" {...props} />,
+                                          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/30 pl-3 italic my-2" {...props} />,
+                                        }}
+                                      >
+                                        {msg.content}
+                                      </ReactMarkdown>
+                                    )}
                                   </div>
                                 </div>
                               )}
