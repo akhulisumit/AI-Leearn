@@ -17,7 +17,7 @@ import WorkflowProgress from "@/components/WorkflowProgress";
 import SidePanel from "@/components/SidePanel";
 import { useSession } from "@/contexts/SessionContext";
 import { apiRequest } from "@/lib/queryClient";
-import { evaluateTest } from "@/lib/gemini";
+import { evaluateTest, submitAllAnswers } from "@/lib/gemini";
 import { useToast } from "@/hooks/use-toast";
 import { BatchEvaluationResult } from "@/../../shared/schema";
 
@@ -82,6 +82,8 @@ const Feedback: React.FC = () => {
           hasBatchEvaluation = true;
           const batchEval = answer.batchEvaluation as BatchEvaluationResult;
           
+          console.log("Found batch evaluation:", batchEval);
+          
           // Use the batch evaluation instead of calculating
           setOverallScore(batchEval.totalScore);
           setStrengthsAndWeaknesses({
@@ -95,6 +97,8 @@ const Feedback: React.FC = () => {
       
       // Only calculate from individual answers if no batch evaluation is available
       if (!hasBatchEvaluation) {
+        console.log("No batch evaluation found, calculating from individual answers");
+        
         // Calculate overall score
         let totalCorrectness = 0;
         const allStrengths: string[] = [];
@@ -152,6 +156,53 @@ const Feedback: React.FC = () => {
   
   const handleGenerateQuestions = () => {
     navigate(`/analysis?sessionId=${sessionId}`);
+  };
+  
+  const handleBatchEvaluation = async () => {
+    if (!sessionId || isEvaluating) return;
+    
+    setIsEvaluating(true);
+    toast({
+      title: "Submitting all answers for evaluation...",
+      description: "Please wait while our AI analyzes your answers.",
+      duration: 3000,
+    });
+    
+    try {
+      // Using the submitAllAnswers function from gemini.ts
+      const response = await submitAllAnswers(sessionId);
+      
+      if (response.success && response.evaluation) {
+        // Update the score and feedback with the batch evaluation
+        setOverallScore(response.evaluation.totalScore);
+        setStrengthsAndWeaknesses({
+          strengths: response.evaluation.strengths || [],
+          weaknesses: response.evaluation.weaknesses || [],
+          recommendedAreas: response.evaluation.recommendedAreas || []
+        });
+        
+        toast({
+          title: "Batch evaluation complete!",
+          description: "Your answers have been analyzed by our AI.",
+          duration: 2000,
+        });
+        
+        // Reload the session to get the updated answers with batch evaluation
+        await loadSession(sessionId);
+      } else {
+        throw new Error(response.message || "Batch evaluation failed");
+      }
+    } catch (error) {
+      console.error("Failed to get batch evaluation:", error);
+      toast({
+        title: "Batch evaluation failed",
+        description: "We couldn't complete the batch evaluation. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setIsEvaluating(false);
+    }
   };
   
   const handleGetAIEvaluation = async () => {
@@ -281,14 +332,24 @@ const Feedback: React.FC = () => {
                         <span className={`text-2xl font-bold ${getScoreColor(overallScore)}`}>{overallScore}%</span>
                       </div>
                     </div>
-                    <Button
-                      onClick={handleGetAIEvaluation}
-                      disabled={isEvaluating}
-                      variant="outline"
-                      className="mt-4"
-                    >
-                      {isEvaluating ? "Evaluating..." : "Get AI-Powered Evaluation"}
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center mt-4">
+                      <Button
+                        onClick={handleBatchEvaluation}
+                        disabled={isEvaluating}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {isEvaluating ? "Processing..." : "Submit All Answers"}
+                      </Button>
+                      <Button
+                        onClick={handleGetAIEvaluation}
+                        disabled={isEvaluating}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {isEvaluating ? "Evaluating..." : "Evaluate Full Test"}
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
