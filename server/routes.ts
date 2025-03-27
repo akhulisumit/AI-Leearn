@@ -85,21 +85,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingQuestions = await storage.getSessionQuestions(sessionId);
       const existingQuestionsText = existingQuestions.map(q => q.question.toLowerCase());
       
+      // Extract education and difficulty levels from topic if present
+      // Format: "TOPIC [Education: LEVEL, Difficulty: LEVEL]"
+      let educationLevel = "Class 9-10"; // Default
+      let difficultyLevel = "Standard"; // Default
+      let pureTopic = topic;
+      
+      const metadataMatch = topic.match(/\[(.*?)\]/);
+      if (metadataMatch) {
+        pureTopic = topic.replace(/\s*\[.*?\]$/, "").trim();
+        
+        const metadata = metadataMatch[1];
+        const educationMatch = metadata.match(/Education:\s*(.*?)(?:,|$)/);
+        if (educationMatch) {
+          educationLevel = educationMatch[1].trim();
+        }
+        
+        const difficultyMatch = metadata.match(/Difficulty:\s*(.*?)(?:,|$)/);
+        if (difficultyMatch) {
+          difficultyLevel = difficultyMatch[1].trim();
+        }
+      }
+      
+      // Map difficulty level to AI-generated question difficulty
+      let easyCount = 2;
+      let mediumCount = 2;
+      let hardCount = 2;
+      
+      // Adjust difficulty distribution based on selected level
+      if (difficultyLevel === "Beginner") {
+        easyCount = 4;
+        mediumCount = 2;
+        hardCount = 0;
+      } else if (difficultyLevel === "Advanced") {
+        easyCount = 0;
+        mediumCount = 2;
+        hardCount = 4;
+      }
+      
       // Add context to make generated questions more unique
       let contextPrompt = "";
       if (existingQuestionsText.length > 0) {
         contextPrompt = `I already have the following questions in my test (DO NOT repeat these or create similar questions):\n${existingQuestionsText.join('\n')}\n\n`;
       }
       
-      const prompt = `${contextPrompt}Generate UNIQUE and diverse questions on ${topic} to test my knowledge. 
+      const prompt = `${contextPrompt}Generate UNIQUE and diverse questions on ${pureTopic} to test my knowledge.
       
-      IMPORTANT: Each question must test a different concept within ${topic}. Do not create questions that are similar to each other.
+      The student is at education level: ${educationLevel}.
+      The desired difficulty level is: ${difficultyLevel}.
+      
+      IMPORTANT: Each question must test a different concept within ${pureTopic}. Do not create questions that are similar to each other.
+      Tailor the questions to be appropriate for someone at the ${educationLevel} education level.
       
       Format the response as a JSON array of objects, where each object has 'question' and 'difficulty' properties. Difficulty should be one of: 'easy', 'medium', or 'hard'.
       
-      Give me 6 questions total: 2 easy, 2 medium, and 2 hard questions.
+      Give me 6 questions total: ${easyCount} easy, ${mediumCount} medium, and ${hardCount} hard questions.
       
-      Make sure every question is testing a completely different aspect of ${topic}.`;
+      Make sure every question is testing a completely different aspect of ${pureTopic}.`;
       
       try {
         const result = await model.generateContent(prompt);
@@ -170,6 +212,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const questionsWithAnswers = await storage.getSessionQuestionsWithAnswers(sessionId);
     res.json({ questionsWithAnswers });
+  });
+  
+  // Endpoint to get correct answers for all questions in a session
+  app.get('/api/sessions/:sessionId/correct-answers', async (req: Request, res: Response) => {
+    const sessionId = parseInt(req.params.sessionId);
+    if (isNaN(sessionId)) {
+      return res.status(400).json({ message: 'Invalid session ID', success: false });
+    }
+    
+    try {
+      // Get all questions for the session
+      const questions = await storage.getSessionQuestions(sessionId);
+      if (!questions || questions.length === 0) {
+        return res.status(404).json({ 
+          message: 'No questions found for this session', 
+          success: false,
+          answers: []
+        });
+      }
+      
+      // Generate correct answers using AI
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ 
+          message: 'Session not found', 
+          success: false,
+          answers: []
+        });
+      }
+      
+      const topic = session.topic;
+      const answers = [];
+      
+      for (const question of questions) {
+        try {
+          // Generate the correct answer using Gemini
+          const prompt = `
+            You are an expert educational assistant. Please provide a correct answer to 
+            the following question on the topic of ${topic}:
+            
+            Question: ${question.question}
+            
+            Provide a clear, accurate, and concise answer.
+          `;
+          
+          const result = await model.generateContent(prompt);
+          const response = result.response;
+          const correctAnswer = response.text().trim();
+          
+          answers.push({
+            questionId: question.id,
+            correctAnswer
+          });
+        } catch (error) {
+          console.error(`Error generating correct answer for question ${question.id}:`, error);
+          // Include a placeholder error message instead of failing the entire request
+          answers.push({
+            questionId: question.id,
+            correctAnswer: "Sorry, we couldn't generate the correct answer for this question."
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: "Correct answers generated successfully",
+        answers
+      });
+    } catch (error) {
+      console.error("Error generating correct answers:", error);
+      res.status(500).json({ 
+        message: "Failed to generate correct answers", 
+        success: false,
+        answers: []
+      });
+    }
   });
 
   // Answer endpoints

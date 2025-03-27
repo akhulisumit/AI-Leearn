@@ -13,11 +13,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface TopicCategory {
   name: string;
   topics: string[];
 }
+
+// Define education and difficulty levels
+type EducationLevel = "Class 1-5" | "Class 6-8" | "Class 9-10" | "Class 11-12" | "Bachelors" | "Masters" | "PhD";
+type DifficultyLevel = "Beginner" | "Standard" | "Advanced";
+
+const EDUCATION_LEVELS: EducationLevel[] = [
+  "Class 1-5", "Class 6-8", "Class 9-10", "Class 11-12", "Bachelors", "Masters", "PhD"
+];
+
+const DIFFICULTY_LEVELS: DifficultyLevel[] = [
+  "Beginner", "Standard", "Advanced"
+];
 
 const DEFAULT_TOPICS: TopicCategory[] = [
   {
@@ -49,7 +68,13 @@ const DEFAULT_TOPICS: TopicCategory[] = [
 interface TopicSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectTopic: (topic: string) => void;
+  onSelectTopic: (topic: string, educationLevel: EducationLevel, difficultyLevel: DifficultyLevel) => void;
+}
+
+interface TopicMetadata {
+  topic: string;
+  educationLevel: EducationLevel;
+  difficultyLevel: DifficultyLevel;
 }
 
 const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
@@ -62,6 +87,8 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState("");
   const [activeTab, setActiveTab] = useState<"browse" | "custom">("browse");
+  const [educationLevel, setEducationLevel] = useState<EducationLevel>("Class 9-10");
+  const [difficultyLevel, setDifficultyLevel] = useState<DifficultyLevel>("Standard");
   
   // Filter topics based on search term
   const filteredTopics = searchTerm 
@@ -75,10 +102,10 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
   
   const handleConfirm = () => {
     if (activeTab === "browse" && selectedTopic) {
-      onSelectTopic(selectedTopic);
+      onSelectTopic(selectedTopic, educationLevel, difficultyLevel);
       resetState();
     } else if (activeTab === "custom" && customTopic.trim()) {
-      onSelectTopic(customTopic.trim());
+      onSelectTopic(customTopic.trim(), educationLevel, difficultyLevel);
       resetState();
     }
   };
@@ -211,6 +238,49 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
             )}
           </TabsContent>
         </Tabs>
+        
+        <div className="mb-4">
+          <h3 className="text-sm font-medium mb-2">Configuration Options</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Education Level</label>
+              <Select 
+                value={educationLevel} 
+                onValueChange={(value) => setEducationLevel(value as EducationLevel)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select education level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EDUCATION_LEVELS.map(level => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Difficulty Level</label>
+              <Select 
+                value={difficultyLevel} 
+                onValueChange={(value) => setDifficultyLevel(value as DifficultyLevel)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DIFFICULTY_LEVELS.map(level => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
         
         <DialogFooter>
           <Button

@@ -157,3 +157,29 @@ export async function evaluateTest(sessionId: number): Promise<TestEvaluationRes
     };
   }
 }
+
+export interface GetCorrectAnswersResponse {
+  success: boolean;
+  message: string;
+  answers: { questionId: number, correctAnswer: string }[];
+}
+
+export async function getCorrectAnswers(sessionId: number): Promise<GetCorrectAnswersResponse> {
+  try {
+    const response = await apiRequest('GET', `/api/sessions/${sessionId}/correct-answers`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error in getCorrectAnswers:", error);
+    return {
+      success: false,
+      message: "Failed to retrieve correct answers. Please try again later.",
+      answers: []
+    };
+  }
+}

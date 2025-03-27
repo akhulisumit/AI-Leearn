@@ -7,16 +7,30 @@ import Footer from "@/components/Footer";
 import TopicSelectionModal from "@/components/TopicSelectionModal";
 import { useSession } from "@/contexts/SessionContext";
 
+// Import the types needed for education and difficulty levels
+type EducationLevel = "Class 1-5" | "Class 6-8" | "Class 9-10" | "Class 11-12" | "Bachelors" | "Masters" | "PhD";
+type DifficultyLevel = "Beginner" | "Standard" | "Advanced";
+
 const Home: React.FC = () => {
   const [, navigate] = useLocation();
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const { createSession } = useSession();
   
-  const handleStartSession = async (topic: string) => {
+  const handleStartSession = async (
+    topic: string, 
+    educationLevel: EducationLevel, 
+    difficultyLevel: DifficultyLevel
+  ) => {
     try {
       // For this demo, we'll use a fixed user ID of 1
       const userId = 1;
-      const session = await createSession(userId, topic);
+      
+      // Create the session with the topic, education level, and difficulty level
+      // For now, we'll store the education and difficulty levels in the topic string
+      // Format: "TOPIC [Education: LEVEL, Difficulty: LEVEL]"
+      const formattedTopic = `${topic} [Education: ${educationLevel}, Difficulty: ${difficultyLevel}]`;
+      
+      const session = await createSession(userId, formattedTopic);
       navigate(`/analysis?sessionId=${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
