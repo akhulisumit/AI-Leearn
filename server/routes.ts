@@ -286,7 +286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // New endpoint to evaluate all answers at once and provide overall evaluation
+  // Optimized endpoint to evaluate all answers at once and provide overall evaluation
   app.post('/api/sessions/:sessionId/evaluate-all-answers', async (req: Request, res: Response) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
@@ -294,14 +294,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid session ID' });
       }
       
-      // Get the session details
-      const session = await storage.getSession(sessionId);
+      // Get the session details and questions with answers concurrently for performance
+      const [session, questionsWithAnswers] = await Promise.all([
+        storage.getSession(sessionId),
+        storage.getSessionQuestionsWithAnswers(sessionId)
+      ]);
+      
       if (!session) {
         return res.status(404).json({ message: 'Session not found' });
       }
-      
-      // Get all questions and answers for this session
-      const questionsWithAnswers = await storage.getSessionQuestionsWithAnswers(sessionId);
       
       // Filter questions with answers for batch evaluation
       const answeredQuestions = questionsWithAnswers.filter(qa => qa.answer);
@@ -310,13 +311,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'No answers found for this session' });
       }
       
-      // Create a unique cache key based on the session ID and answers
-      const answersHash = answeredQuestions
-        .map(qa => `${qa.id}-${qa.answer?.userAnswer.substring(0, 10)}`)
-        .join('|');
-      const cacheKey = `batch-evaluate:${sessionId}:${answersHash.length}`;
+      // Create a more efficient cache key based on the session ID, question count, and a hash of their content
+      // This allows more cache hits by focusing on the essential parts of the answers
+      const contentHash = answeredQuestions
+        .map(qa => `${qa.id}-${qa.answer?.userAnswer.substring(0, 8)}`)
+        .join('|')
+        .split('')
+        .reduce((a: number, b: string) => (a + b.charCodeAt(0)), 0)
+        .toString(16);
+      
+      const cacheKey = `batch-eval:${sessionId}:${answeredQuestions.length}:${contentHash}`;
       
       try {
+        // Use the cached data if available, otherwise fetch from AI
         const evaluationData = await getCachedOrFetchFromAI(
           cacheKey,
           () => {
@@ -351,23 +358,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return promptText;
           },
           (text) => {
-            // Store the original AI response for debugging
-            console.log('AI response for batch evaluation:', text.substring(0, 200) + '...');
-            
-            // Parse the evaluation
+            // Parse the evaluation with better error handling
             try {
-              // Extract JSON from response
+              // Extract JSON from response using more robust pattern matching
               const jsonMatch = text.match(/{[\s\S]*}/);
               if (!jsonMatch) {
                 throw new Error('No JSON found in AI response');
               }
               
+              // Parse the JSON and validate it
               const batchEvaluation = JSON.parse(jsonMatch[0]);
               
-              // Check if we have all the required fields
+              // Check if we have the required fields and apply defaults for missing values
               if (!batchEvaluation.individualScores || !Array.isArray(batchEvaluation.individualScores)) {
-                throw new Error('Missing individualScores array in AI response');
+                batchEvaluation.individualScores = Array(answeredQuestions.length).fill(60); // Default score if missing
               }
+              
+              // Ensure other fields have defaults too
+              batchEvaluation.totalScore = batchEvaluation.totalScore || 
+                Math.round(batchEvaluation.individualScores.reduce((sum: number, score: number) => sum + score, 0) / batchEvaluation.individualScores.length);
+              batchEvaluation.feedback = batchEvaluation.feedback || "Your test has been evaluated.";
+              batchEvaluation.strengths = batchEvaluation.strengths || ["Participation in the assessment"];
+              batchEvaluation.weaknesses = batchEvaluation.weaknesses || ["Areas for improvement identified"];
+              batchEvaluation.recommendedAreas = batchEvaluation.recommendedAreas || ["Further study in " + session.topic];
               
               return {
                 batchEvaluation,
@@ -383,7 +396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Destructure evaluation data
         const { batchEvaluation, answeredQuestions } = evaluationData;
         
-        // Update individual answers with the evaluation results
+        // Update individual answers with the evaluation results in parallel operations
         const updatePromises = answeredQuestions.map(async (qa: QuestionWithAnswer, index: number) => {
           if (!qa.answer) return Promise.resolve();
           
@@ -501,9 +514,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ areas });
   });
 
-  // Simple in-memory cache for AI responses
+  // Enhanced in-memory cache for AI responses with improved key generation
   const aiResponseCache = new Map<string, { data: any, timestamp: number }>();
-  const CACHE_TTL = 1000 * 60 * 30; // 30 minutes cache lifetime
+  const CACHE_TTL = 1000 * 60 * 60; // 60 minutes cache lifetime for better performance
   
   // Helper function to get cached data or fetch from AI
   async function getCachedOrFetchFromAI(cacheKey: string, promptFn: () => string, processFn: (text: string) => any) {

@@ -220,12 +220,18 @@ const Teaching: React.FC = () => {
     await fetchTeachingContent(query);
   };
   
+  // Use a ref to track if notes generation is in progress to prevent multiple calls
+  const notesGenerationInProgress = useRef(false);
+  
   const handleGenerateNotes = async () => {
-    if (!currentSession || studyNotes) return;
+    // Prevent multiple calls or generating notes if they already exist
+    if (!currentSession || studyNotes || notesGenerationInProgress.current || generatingNotes) {
+      return;
+    }
     
+    // Set both state and ref to indicate generation is in progress
     setGeneratingNotes(true);
-    // Set this to true to prevent repeated calls during rerender cycles
-    const notesGenerationInProgress = true;
+    notesGenerationInProgress.current = true;
     
     toast({
       title: "Generating study notes...",
@@ -234,9 +240,16 @@ const Teaching: React.FC = () => {
     });
     
     try {
-      // Simplify - just use the main topic without trying to filter knowledge areas
-      // This makes it more reliable when knowledge areas aren't available
-      const response = await generateStudyNotes(currentSession.topic);
+      // Get weak areas from knowledge areas with low proficiency 
+      const weakAreas = knowledgeAreas
+        .filter(area => area.proficiency < 50)
+        .map(area => area.name);
+      
+      // Generate notes with the main topic and optional weak areas
+      const response = await generateStudyNotes(
+        currentSession.topic,
+        weakAreas.length > 0 ? weakAreas : undefined
+      );
       
       if (response && response.notes) {
         setStudyNotes(response.notes);
@@ -261,6 +274,8 @@ const Teaching: React.FC = () => {
       setStudyNotes(`# Study Notes for ${currentSession.topic}\n\nI'm sorry, but I'm having trouble generating detailed study notes right now. Please try again in a moment.`);
     } finally {
       setGeneratingNotes(false);
+      // Don't reset the ref - notes have been generated or failed to generate
+      // We only want to reset this if the user actively restarts the experience
     }
   };
   
@@ -288,8 +303,25 @@ const Teaching: React.FC = () => {
   const handleRestart = () => {
     setMessages([]);
     setStudyNotes(null);
-    // Reset the actionsInitiated flag to allow for new content
+    // Reset all the relevant flags to allow for new content
     actionsInitiated.current = false;
+    notesGenerationInProgress.current = false;
+    
+    // Small delay to ensure state is updated before potentially triggering new fetches
+    setTimeout(() => {
+      if (currentSession && messages.length === 0 && !studyNotes) {
+        // Trigger the initial message for teaching mode
+        const initialQuery = `Let's learn about ${currentSession.topic}. Can you introduce this topic?`;
+        setMessages([
+          {
+            role: 'user',
+            content: initialQuery
+          }
+        ]);
+        
+        fetchTeachingContent(initialQuery);
+      }
+    }, 300);
   };
   
   if (!currentSession) {

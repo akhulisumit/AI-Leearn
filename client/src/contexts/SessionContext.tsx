@@ -57,48 +57,44 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   
   const loadSession = async (sessionId: number): Promise<void> => {
     try {
-      // Load session with knowledge areas
-      const sessionResponse = await fetch(`/api/sessions/${sessionId}`, {
-        credentials: "include"
-      });
+      // Use Promise.all to make the requests concurrently for faster loading
+      const [sessionResponse, questionsResponse] = await Promise.all([
+        // Load session with knowledge areas
+        apiRequest("GET", `/api/sessions/${sessionId}`),
+        
+        // Load questions with answers
+        apiRequest("GET", `/api/sessions/${sessionId}/questions-with-answers`)
+      ]);
       
-      if (!sessionResponse.ok) {
-        throw new Error("Failed to load session");
-      }
-      
+      // Process the session data
       const sessionData = await sessionResponse.json();
       setCurrentSession(sessionData);
       setKnowledgeAreas(sessionData.knowledgeAreas || []);
       
-      // Load questions with answers
-      const questionsResponse = await fetch(`/api/sessions/${sessionId}/questions-with-answers`, {
-        credentials: "include"
-      });
-      
-      if (!questionsResponse.ok) {
-        throw new Error("Failed to load questions");
-      }
-      
+      // Process the questions and answers data
       const { questionsWithAnswers } = await questionsResponse.json();
       
       // Extract questions and answers
       const loadedQuestions: Question[] = [];
       const loadedAnswers = new Map<number, Answer>();
       
-      questionsWithAnswers.forEach((qa: any) => {
-        const { answer, ...question } = qa;
-        loadedQuestions.push(question);
-        
-        if (answer) {
-          loadedAnswers.set(question.id, answer);
-        }
-      });
+      if (Array.isArray(questionsWithAnswers)) {
+        questionsWithAnswers.forEach((qa: any) => {
+          const { answer, ...question } = qa;
+          loadedQuestions.push(question);
+          
+          if (answer) {
+            loadedAnswers.set(question.id, answer);
+          }
+        });
+      }
       
       setQuestions(loadedQuestions);
       setAnswers(loadedAnswers);
       
     } catch (error) {
       console.error("Error loading session:", error);
+      throw error; // Propagate the error to allow proper handling in components
     }
   };
   
