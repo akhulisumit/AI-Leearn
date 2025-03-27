@@ -214,6 +214,103 @@ const Feedback: React.FC = () => {
     }
   };
   
+  // Function to save session data to localStorage
+  const saveSessionToLocalStorage = (
+    topic: string, 
+    score: number, 
+    strengths: string[], 
+    weaknesses: string[]
+  ) => {
+    try {
+      // Save session data
+      const now = new Date().toISOString();
+      const sessionData = {
+        id: sessionId,
+        topic,
+        date: now,
+        score,
+        weaknesses
+      };
+      
+      // Get existing sessions or initialize empty array
+      const savedSessions = localStorage.getItem('eduSessions');
+      let sessions = savedSessions ? JSON.parse(savedSessions) : [];
+      
+      // Add new session (or update if exists)
+      const existingIndex = sessions.findIndex((s: any) => s.id === sessionId);
+      if (existingIndex >= 0) {
+        sessions[existingIndex] = sessionData;
+      } else {
+        sessions.push(sessionData);
+      }
+      
+      // Save back to localStorage
+      localStorage.setItem('eduSessions', JSON.stringify(sessions));
+      
+      // Save weakness data
+      if (weaknesses && weaknesses.length > 0) {
+        const savedWeaknesses = localStorage.getItem('eduWeaknesses');
+        let weaknessData = savedWeaknesses ? JSON.parse(savedWeaknesses) : [];
+        
+        // Add each weakness
+        weaknesses.forEach(weakness => {
+          const existingIndex = weaknessData.findIndex(
+            (w: any) => w.area === weakness && w.topic === currentSession?.topic
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing weakness
+            weaknessData[existingIndex].count += 1;
+            weaknessData[existingIndex].lastSeen = now;
+          } else {
+            // Add new weakness
+            weaknessData.push({
+              topic: currentSession?.topic || "Unknown",
+              area: weakness,
+              count: 1,
+              lastSeen: now
+            });
+          }
+        });
+        
+        // Save back to localStorage
+        localStorage.setItem('eduWeaknesses', JSON.stringify(weaknessData));
+      }
+      
+      // Save strength data
+      if (strengths && strengths.length > 0) {
+        const savedStrengths = localStorage.getItem('eduStrengths');
+        let strengthData = savedStrengths ? JSON.parse(savedStrengths) : [];
+        
+        // Add each strength
+        strengths.forEach(strength => {
+          const existingIndex = strengthData.findIndex(
+            (s: any) => s.area === strength && s.topic === currentSession?.topic
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing strength
+            strengthData[existingIndex].count += 1;
+            strengthData[existingIndex].lastSeen = now;
+          } else {
+            // Add new strength
+            strengthData.push({
+              topic: currentSession?.topic || "Unknown",
+              area: strength,
+              count: 1,
+              lastSeen: now
+            });
+          }
+        });
+        
+        // Save back to localStorage
+        localStorage.setItem('eduStrengths', JSON.stringify(strengthData));
+      }
+    } catch (e) {
+      console.error("Error saving to localStorage:", e);
+    }
+  };
+
   // Simplified AI evaluation that just focuses on strengths, weaknesses and overall score
   const handleGetAIEvaluation = async () => {
     if (!sessionId || isEvaluating) return;
@@ -237,6 +334,16 @@ const Feedback: React.FC = () => {
           weaknesses: response.evaluation.weaknesses || [],
           recommendedAreas: response.evaluation.recommendedAreas || []
         });
+        
+        // Save to localStorage
+        if (currentSession) {
+          saveSessionToLocalStorage(
+            currentSession.topic,
+            response.evaluation.totalScore,
+            response.evaluation.strengths || [],
+            response.evaluation.weaknesses || []
+          );
+        }
         
         toast({
           title: "Evaluation complete!",

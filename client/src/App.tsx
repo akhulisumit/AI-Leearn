@@ -7,6 +7,8 @@ import Home from "@/pages/home";
 import Analysis from "@/pages/analysis";
 import Feedback from "@/pages/feedback";
 import Teaching from "@/pages/teaching";
+import History from "@/pages/history";
+import Progress from "@/pages/progress";
 import { SessionProvider } from "./contexts/SessionContext";
 
 function Router() {
@@ -16,6 +18,8 @@ function Router() {
       <Route path="/analysis" component={Analysis} />
       <Route path="/feedback" component={Feedback} />
       <Route path="/teaching" component={Teaching} />
+      <Route path="/history" component={History} />
+      <Route path="/progress" component={Progress} />
       <Route component={NotFound} />
     </Switch>
   );
