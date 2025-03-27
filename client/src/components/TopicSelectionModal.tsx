@@ -293,8 +293,9 @@ const TopicSelectionModal: React.FC<TopicSelectionModalProps> = ({
             onClick={handleConfirm}
             disabled={(activeTab === "browse" && !selectedTopic) || 
                      (activeTab === "custom" && !customTopic.trim())}
+            className="bg-primary hover:bg-primary-dark"
           >
-            Select
+            Start Analysis
           </Button>
         </DialogFooter>
       </DialogContent>
