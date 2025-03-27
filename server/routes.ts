@@ -286,191 +286,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Optimized endpoint to evaluate all answers at once and provide overall evaluation
+  // Simplified endpoint to evaluate all answers at once and provide overall evaluation
   app.post('/api/sessions/:sessionId/evaluate-all-answers', async (req: Request, res: Response) => {
     try {
+      console.log("Starting batch evaluation process");
+      
       const sessionId = parseInt(req.params.sessionId);
       if (isNaN(sessionId)) {
         return res.status(400).json({ message: 'Invalid session ID' });
       }
       
-      // Get the session details and questions with answers concurrently for performance
-      const [session, questionsWithAnswers] = await Promise.all([
-        storage.getSession(sessionId),
-        storage.getSessionQuestionsWithAnswers(sessionId)
-      ]);
-      
+      // Get the session with knowledge areas
+      const session = await storage.getSession(sessionId);
       if (!session) {
         return res.status(404).json({ message: 'Session not found' });
       }
       
-      // Filter questions with answers for batch evaluation
-      const answeredQuestions = questionsWithAnswers.filter(qa => qa.answer);
+      // Get all questions with answers for this session
+      const answeredQuestions = await storage.getSessionQuestionsWithAnswers(sessionId);
+      console.log(`Found ${answeredQuestions.length} questions for session ${sessionId}`);
       
-      if (answeredQuestions.length === 0) {
-        return res.status(400).json({ message: 'No answers found for this session' });
+      // Only evaluate if there are answered questions
+      if (answeredQuestions.length === 0 || answeredQuestions.every(q => !q.answer)) {
+        return res.status(400).json({ 
+          message: 'No answered questions found for this session',
+          success: false
+        });
       }
       
-      // Create a more efficient cache key based on the session ID, question count, and a hash of their content
-      // This allows more cache hits by focusing on the essential parts of the answers
-      const contentHash = answeredQuestions
-        .map(qa => `${qa.id}-${qa.answer?.userAnswer.substring(0, 8)}`)
-        .join('|')
-        .split('')
-        .reduce((a: number, b: string) => (a + b.charCodeAt(0)), 0)
-        .toString(16);
-      
-      const cacheKey = `batch-eval:${sessionId}:${answeredQuestions.length}:${contentHash}`;
-      
+      // Simplified direct approach: directly call the Gemini API
       try {
-        // Use the cached data if available, otherwise fetch from AI
-        const evaluationData = await getCachedOrFetchFromAI(
-          cacheKey,
-          () => {
-            // Prepare the batch evaluation prompt for AI - focus on overall evaluation
-            let promptText = `I've completed a test on ${session.topic}. Please evaluate my performance on ALL of the following questions and answers at once:\n\n`;
-            
-            answeredQuestions.forEach((qa: QuestionWithAnswer, index: number) => {
-              promptText += `Question ${index + 1} (${qa.difficulty}): ${qa.question}\n`;
-              promptText += `My Answer: ${qa.answer?.userAnswer}\n\n`;
-            });
-            
-            promptText += `For EACH answer above, give a correctness score (0-100).
-            
-            Then provide a comprehensive evaluation with:
-            1. An overall score for the entire test (0-100)
-            2. General feedback on my performance (be concise, max 2-3 sentences)
-            3. My key strengths based on these answers (max 3 points)
-            4. Areas that need improvement (max 3 points)
-            5. Recommended specific topics to study further (max 3 areas)
-            
-            Format your response as a JSON object with the following structure:
-            {
-              "individualScores": [score1, score2, ...],
-              "individualFeedback": ["feedback1", "feedback2", ...],
-              "totalScore": <overall score 0-100>,
-              "feedback": "<general feedback>",
-              "strengths": ["<strength1>", "<strength2>", ...],
-              "weaknesses": ["<weakness1>", "<weakness2>", ...],
-              "recommendedAreas": ["<area1>", "<area2>", ...]
-            }`;
-            
-            return promptText;
-          },
-          (text) => {
-            // Parse the evaluation with better error handling
-            try {
-              // Extract JSON from response using more robust pattern matching
-              const jsonMatch = text.match(/{[\s\S]*}/);
-              if (!jsonMatch) {
-                throw new Error('No JSON found in AI response');
-              }
-              
-              // Parse the JSON and validate it
-              const batchEvaluation = JSON.parse(jsonMatch[0]);
-              
-              // Check if we have the required fields and apply defaults for missing values
-              if (!batchEvaluation.individualScores || !Array.isArray(batchEvaluation.individualScores)) {
-                batchEvaluation.individualScores = Array(answeredQuestions.length).fill(60); // Default score if missing
-              }
-              
-              // Ensure other fields have defaults too
-              batchEvaluation.totalScore = batchEvaluation.totalScore || 
-                Math.round(batchEvaluation.individualScores.reduce((sum: number, score: number) => sum + score, 0) / batchEvaluation.individualScores.length);
-              batchEvaluation.feedback = batchEvaluation.feedback || "Your test has been evaluated.";
-              batchEvaluation.strengths = batchEvaluation.strengths || ["Participation in the assessment"];
-              batchEvaluation.weaknesses = batchEvaluation.weaknesses || ["Areas for improvement identified"];
-              batchEvaluation.recommendedAreas = batchEvaluation.recommendedAreas || ["Further study in " + session.topic];
-              
-              return {
-                batchEvaluation,
-                answeredQuestions
-              };
-            } catch (error: unknown) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              throw new Error(`Failed to parse batch evaluation: ${errorMessage}`);
-            }
-          }
-        );
+        // Prepare the batch evaluation prompt
+        let promptText = `I've completed a test on ${session.topic}. Please evaluate my performance:
+
+Questions and My Answers:
+`;
         
-        // Destructure evaluation data
-        const { batchEvaluation, answeredQuestions } = evaluationData;
-        
-        // Update individual answers with the evaluation results in parallel operations
-        const updatePromises = answeredQuestions.map(async (qa: QuestionWithAnswer, index: number) => {
-          if (!qa.answer) return Promise.resolve();
-          
-          const score = batchEvaluation.individualScores[index] || 0;
-          const feedback = (batchEvaluation.individualFeedback && batchEvaluation.individualFeedback[index]) || 
-                           'See overall feedback for details';
-          
-          // Create a batch evaluation object to add to one answer
-          // This will be used in the frontend to display the overall evaluation
-          const batchEvaluationData = {
-            totalScore: batchEvaluation.totalScore || 0,
-            feedback: batchEvaluation.feedback || 'No overall feedback provided',
-            strengths: batchEvaluation.strengths || [],
-            weaknesses: batchEvaluation.weaknesses || [],
-            recommendedAreas: batchEvaluation.recommendedAreas || []
-          };
-          
-          // Update the answer with the evaluation
-          const evaluation = {
-            correctness: score,
-            feedback: feedback,
-            strengths: batchEvaluation.strengths || [],
-            weaknesses: batchEvaluation.weaknesses || []
-          };
-          
-          // The first answer will also store the batch evaluation data
-          // This is a bit of a hack but allows us to retrieve it easily from the frontend
-          const answerData = insertAnswerSchema.parse({
-            questionId: qa.id,
-            userAnswer: qa.answer.userAnswer,
-            evaluation,
-            // Only attach the batch evaluation to the first answer for retrieval in the UI
-            ...(index === 0 ? { batchEvaluation: batchEvaluationData } : {})
-          });
-          
-          // Save the updated answer
-          return storage.createAnswer(answerData);
+        // Add each question and answer to the prompt
+        answeredQuestions.forEach((qa: QuestionWithAnswer, index: number) => {
+          promptText += `\nQuestion ${index + 1}: ${qa.question}\n`;
+          promptText += `My Answer: ${qa.answer?.userAnswer || "No answer provided"}\n`;
         });
         
-        // Wait for all updates to complete
-        await Promise.all(updatePromises);
+        promptText += `
+Based on my answers, provide:
+1. An overall score (0-100) for my test
+2. 2-3 clear strengths in my understanding
+3. 2-3 areas where I need improvement
+4. 2-3 specific topics I should study more
+
+Format your response ONLY as a JSON object like this:
+{
+  "totalScore": 75,
+  "strengths": ["strength1", "strength2", "strength3"],
+  "weaknesses": ["weakness1", "weakness2", "weakness3"],
+  "recommendedAreas": ["area1", "area2"]
+}
+
+IMPORTANT: DO NOT include any text outside of this JSON object.`;
+        
+        console.log("Sending evaluation request to Gemini API");
+        
+        // Direct call to Gemini with timeout handling
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("AI request timed out")), 15000)
+        );
+        
+        const responsePromise = model.generateContent(promptText);
+        const result = await Promise.race([responsePromise, timeoutPromise]) as any;
+        const response = await result.response;
+        const text = response.text();
+        
+        console.log("Received response from Gemini API");
+        
+        // Extract and parse the JSON
+        let evaluation;
+        try {
+          // More robust JSON extraction with fallback
+          const jsonMatch = text.match(/{[\s\S]*}/);
+          if (!jsonMatch) {
+            console.error("No valid JSON found in response");
+            console.log("Raw response:", text);
+            throw new Error('No valid JSON found in response');
+          }
+          
+          evaluation = JSON.parse(jsonMatch[0]);
+          
+          // Validate required fields
+          if (typeof evaluation.totalScore !== 'number' || 
+              !Array.isArray(evaluation.strengths) || 
+              !Array.isArray(evaluation.weaknesses)) {
+            throw new Error('Missing required fields in evaluation');
+          }
+          
+          console.log("Successfully parsed evaluation:", evaluation);
+        } catch (parseError) {
+          console.error("Error parsing evaluation JSON:", parseError);
+          
+          // Calculate an average score based on previous individual evaluations if available
+          let averageScore = 70; // Default fallback
+          const scoresFromPreviousEvals = answeredQuestions
+            .filter(qa => qa.answer && qa.answer.evaluation && typeof qa.answer.evaluation === 'object' && 'correctness' in qa.answer.evaluation)
+            .map(qa => {
+              const evaluation = qa.answer?.evaluation as { correctness: number };
+              return evaluation.correctness;
+            });
+          
+          if (scoresFromPreviousEvals.length > 0) {
+            averageScore = Math.round(scoresFromPreviousEvals.reduce((a, b) => a + b, 0) / scoresFromPreviousEvals.length);
+          }
+          
+          // Provide a more helpful fallback evaluation
+          evaluation = {
+            totalScore: averageScore,
+            strengths: [
+              "You attempted to answer the questions", 
+              "Your responses show engagement with the material"
+            ],
+            weaknesses: [
+              "Some concepts need deeper understanding", 
+              "More detailed examples would improve your answers"
+            ],
+            recommendedAreas: [
+              `Review core concepts of ${session.topic}`,
+              "Practice applying concepts to specific scenarios"
+            ]
+          };
+        }
+        
+        // Create a batch evaluation record
+        const batchEvaluationData = {
+          totalScore: evaluation.totalScore,
+          feedback: "Your test has been evaluated based on your answers.",
+          strengths: evaluation.strengths,
+          weaknesses: evaluation.weaknesses,
+          recommendedAreas: evaluation.recommendedAreas
+        };
+        
+        console.log("Saving evaluation to storage...");
+        
+        // Store the evaluation in the first answer only for simplicity
+        if (answeredQuestions.length > 0 && answeredQuestions[0].answer) {
+          const firstAnswer = answeredQuestions[0];
+          
+          // Double-check that we still have an answer (TypeScript safety)
+          if (firstAnswer.answer) {
+            try {
+              const answerData = insertAnswerSchema.parse({
+                questionId: firstAnswer.id,
+                userAnswer: firstAnswer.answer.userAnswer,
+                evaluation: {
+                  correctness: evaluation.totalScore,
+                  feedback: "See overall evaluation for details",
+                  strengths: evaluation.strengths || [],
+                  weaknesses: evaluation.weaknesses || []
+                },
+                batchEvaluation: batchEvaluationData
+              });
+            
+              await storage.createAnswer(answerData);
+              console.log("Successfully stored batch evaluation in first answer");
+            } catch (validationError) {
+              console.error("Error validating answer data:", validationError);
+              // Continue with the response even if storage fails
+            }
+          }
+        }
         
         // Return success with evaluation summary
         res.json({ 
           message: 'Evaluation completed successfully', 
           success: true,
-          evaluation: {
-            totalScore: batchEvaluation.totalScore || 0,
-            feedback: batchEvaluation.feedback || 'No overall feedback provided',
-            strengths: batchEvaluation.strengths || [],
-            weaknesses: batchEvaluation.weaknesses || [],
-            recommendedAreas: batchEvaluation.recommendedAreas || []
-          }
+          evaluation: batchEvaluationData
         });
-        
       } catch (error) {
-        console.error('Error generating or parsing batch evaluation:', error);
+        console.error('Error during batch evaluation:', error);
         
-        // Create a fallback response that won't break the UI
-        res.json({
-          message: 'Evaluation completed with limited functionality',
-          success: true,
-          evaluation: {
-            totalScore: 60, // Fallback score
-            feedback: "I'm having trouble generating a detailed evaluation right now. Here's a basic assessment based on your answers.",
-            strengths: ["You've attempted to answer all the questions"],
-            weaknesses: ["Some answers might need more detail or clarity"],
-            recommendedAreas: ["Review core concepts of " + session.topic]
-          }
+        // Return a more informative error message
+        res.status(500).json({ 
+          message: 'Error during evaluation. Please try again.',
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
         });
       }
     } catch (error) {
-      console.error('Error evaluating answers:', error);
-      res.status(500).json({ message: 'Failed to evaluate answers', error });
+      console.error('Unexpected error in evaluate-all-answers:', error);
+      res.status(500).json({ 
+        message: 'Unexpected error during batch evaluation',
+        success: false
+      });
     }
   });
 

@@ -64,20 +64,33 @@ export interface BatchEvaluationResponse {
 // Enhanced function to submit all answers for evaluation at once - now returns the evaluation data
 export async function submitAllAnswers(sessionId: number): Promise<BatchEvaluationResponse> {
   try {
+    console.log(`Submitting all answers for session ${sessionId} for evaluation`);
+    
     const response = await apiRequest('POST', `/api/sessions/${sessionId}/evaluate-all-answers`, {});
     if (!response.ok) {
+      console.error(`API returned error status: ${response.status}`);
       throw new Error(`API returned status: ${response.status}`);
     }
     
     // Parse the evaluation results
     const data = await response.json();
+    console.log("Received batch evaluation response:", data);
+    
+    // Validate that we have the required fields before returning
+    if (!data.success) {
+      throw new Error(data.message || "Evaluation failed with no message");
+    }
+    
+    // Make sure we have evaluation data
+    if (!data.evaluation) {
+      throw new Error("Evaluation completed but no evaluation data was returned");
+    }
+    
     return data;
   } catch (error) {
     console.error("Error in submitAllAnswers:", error);
-    return {
-      success: false,
-      message: "We're having trouble evaluating your answers right now. Please try again later."
-    };
+    // Let the caller handle the error through Promise rejection
+    throw error;
   }
 }
 
