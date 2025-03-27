@@ -101,16 +101,18 @@ const Analysis: React.FC = () => {
   // Find and prepare the next question in advance
   useEffect(() => {
     if (questions.length > 0 && currentQuestion) {
-      const currentIndex = questions.findIndex(q => q.id === currentQuestion.id);
-      const unansweredQuestions = questions.filter(q => !answers.has(q.id) && q.id !== currentQuestion.id);
+      // Sort questions by ID for consistent ordering
+      const sortedQuestions = [...questions].sort((a, b) => a.id - b.id);
+      const currentIndex = sortedQuestions.findIndex(q => q.id === currentQuestion.id);
+      const unansweredQuestions = sortedQuestions.filter(q => !answers.has(q.id) && q.id !== currentQuestion.id);
       
       if (unansweredQuestions.length > 0) {
         // Prioritize the next sequential question if it's unanswered
-        const nextSequentialQuestion = currentIndex < questions.length - 1 ? questions[currentIndex + 1] : null;
+        const nextSequentialQuestion = currentIndex < sortedQuestions.length - 1 ? sortedQuestions[currentIndex + 1] : null;
         if (nextSequentialQuestion && !answers.has(nextSequentialQuestion.id)) {
           setNextQuestion(nextSequentialQuestion);
         } else {
-          // Otherwise use any unanswered question
+          // Otherwise use any unanswered question (already sorted)
           setNextQuestion(unansweredQuestions[0]);
         }
       } else {
@@ -159,7 +161,11 @@ const Analysis: React.FC = () => {
         userAnswers.has(q.id)
       );
       
-      if (allQuestionsAnswered || (nextQuestion === null && currentQuestion.id === questions[questions.length - 1].id)) {
+      // Sort questions by ID for consistent ordering
+      const sortedQuestions = [...questions].sort((a, b) => a.id - b.id);
+      const isLastQuestion = currentQuestion.id === sortedQuestions[sortedQuestions.length - 1].id;
+      
+      if (allQuestionsAnswered || (nextQuestion === null && isLastQuestion)) {
         // Show a message that we're submitting all answers
         toast({
           title: "Test Complete!",
@@ -257,8 +263,9 @@ const Analysis: React.FC = () => {
           });
         }
       } else if (!nextQuestion) {
-        // Only if we didn't already set the next question, find one now
-        const nextUnansweredQuestion = questions.find(q => !userAnswers.has(q.id));
+        // Only if we didn't already set the next question, find one now in sorted order
+        const sortedQuestions = [...questions].sort((a, b) => a.id - b.id);
+        const nextUnansweredQuestion = sortedQuestions.find(q => !userAnswers.has(q.id));
         if (nextUnansweredQuestion) {
           setCurrentQuestion(nextUnansweredQuestion);
         }
@@ -370,7 +377,9 @@ const Analysis: React.FC = () => {
                   ) : currentQuestion ? (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium">Question {questions.indexOf(currentQuestion) + 1} of {questions.length}</h3>
+                        <h3 className="text-lg font-medium">Question {
+                          [...questions].sort((a, b) => a.id - b.id).findIndex(q => q.id === currentQuestion.id) + 1
+                        } of {questions.length}</h3>
                         <span className={`text-sm font-medium ${getDifficultyColor(currentQuestion.difficulty)}`}>
                           {currentQuestion.difficulty.charAt(0).toUpperCase() + currentQuestion.difficulty.slice(1)}
                         </span>
@@ -426,7 +435,7 @@ const Analysis: React.FC = () => {
                       </div>
                       
                       <div className="text-sm text-neutral-500 mt-2">
-                        <p>Question Progress: {questions.filter(q => answers.has(q.id)).length} of {questions.length} completed</p>
+                        <p>Question Progress: {questions.filter(q => answers.has(q.id) || userAnswers.has(q.id)).length} of {questions.length} completed</p>
                       </div>
                     </div>
                   ) : (
