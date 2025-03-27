@@ -1,17 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { useSession } from "@/contexts/SessionContext";
-import StudyBreakModal from "@/components/StudyBreakModal";
 
 const Header: React.FC = () => {
   const [location] = useLocation();
-  const { currentSession, sessionTime } = useSession();
-
-  // Determine if we're in a valid study session that can use study breaks
-  const isInStudySession = Boolean(
-    currentSession && 
-    (location.startsWith('/analysis') || location.startsWith('/teaching') || location.startsWith('/feedback'))
-  );
 
   return (
     <header className="bg-white shadow-md">
@@ -40,14 +31,6 @@ const Header: React.FC = () => {
           </div>
         </Link>
         <div className="flex items-center space-x-4">
-          {isInStudySession && currentSession && (
-            <div className="mr-2">
-              <StudyBreakModal 
-                sessionTime={sessionTime} 
-                topic={currentSession.topic} 
-              />
-            </div>
-          )}
           <Link href="/history">
             <button className="hidden md:flex items-center text-neutral-700 hover:text-primary-dark transition-colors">
               <svg 
